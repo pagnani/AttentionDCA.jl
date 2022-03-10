@@ -43,7 +43,7 @@ function MinimizePLAsym(alg::PlmAlg, var::PlmVar)
     LL = (var.N - 1) * var.q2  #number of independent variables
     x0 = zeros(Float64, LL)
     vecps = SharedArray{Float64}(var.N)
-    Jmat = zeros(LL,var.N) |> SharedArray_
+    Jmat = zeros(LL,var.N) |> SharedArray
     Threads.@threads for site = 1:var.N # 1:12
         opt = Opt(alg.method, length(x0))
         ftol_abs!(opt, alg.epsconv)
@@ -74,36 +74,7 @@ function MinimizePLAsym(alg::PlmAlg, var::PlmVar)
     # end
     return sdata(Jmat), vecps
 end
-
-function ComputeUL(alg::PlmAlg, var::PlmVar, site::Int, LL::Int)
-
-    N  = var.N
-    q2 = var.q2
-    lb = -Inf * ones(Float64, LL)
-    ub =  Inf * ones(Float64, LL)
-    tiny::Float64 = 1.0e-6
-    offset::Int = 0
-
-    for i = 1:site - 1
-        for s = 1:q2
-            lb[offset + s] = -tiny
-            ub[offset + s] =  tiny
-        end
-    end
-    offset += q2
-
-    for i = site + 1:N
-        for s = 1:q2
-            lb[offset + s] = -tiny
-            ub[offset + s] =  tiny
-        end
-        offset += q2
-    end
-    return lb, ub
-end
-
 function PLsiteAndGrad!(x::Vector{Float64}, grad::Vector{Float64}, site::Int, plmvar::PlmVar)
-
 
     LL = length(x)
     q2 = plmvar.q2
@@ -142,10 +113,8 @@ function PLsiteAndGrad!(x::Vector{Float64}, grad::Vector{Float64}, site::Int, pl
 	        end
 	        grad[ izm[i] - q2 + zsm ] -= W[m]
 	    end
-        @avx for s = 1:q        
-	        grad[ (N - 1) * q2 + s ] += W[m] * expvecenesumnorm[s]
-	    end
-		grad[ (N - 1) * q2 + zsm ] -= W[m]
+        
+		#grad[ (N - 1) * q2 + zsm ] -= W[m]
 	end
 	pseudolike += L2norm_asym(x, plmvar)
 end
@@ -165,7 +134,6 @@ function fillvecene!(vecene::Vector{Float64}, x::Vector{Float64}, site::Int, Idx
         @avx for i = site + 1:N        
             scra +=  x[IdxSeq[i] - q2 + l]
         end # End sum_i \neq site J
-        scra +=  x[(N - 1) * q2 + l] # sum H
         vecene[l] = scra
     end
 
@@ -200,7 +168,7 @@ function ComputeScore(Jmat::Array{Float64,2}, var::PlmVar, min_separation::Int)
 
     q = var.q
     N = var.N
-    JJ = reshape(Jmat[1:end - q,:], q, q, N - 1, N)
+    JJ = reshape(Jmat[1:end,:], q, q, N - 1, N)
     Jtemp1 = zeros(q, q, Int(N * (N - 1) / 2))
     Jtemp2 = zeros(q, q, Int(N * (N - 1) / 2))
     l = 1
@@ -212,10 +180,7 @@ function ComputeScore(Jmat::Array{Float64,2}, var::PlmVar, min_separation::Int)
         end
     end
 
-    hplm = fill(0.0, q, N)
-    for i in 1:N
-        hplm[:,i] .= Jmat[end - q + 1:end,i]
-    end
+
 
     Jtensor1 = inflate_matrix(Jtemp1, N)
     Jtensor2 = inflate_matrix(Jtemp2, N)
@@ -236,5 +201,5 @@ function ComputeScore(Jmat::Array{Float64,2}, var::PlmVar, min_separation::Int)
 
     FN = compute_APC(Jtensor, N, q)
     score = compute_ranking(FN, min_separation)
-    return score, FN, Jplm, hplm
+    return score, FN, Jplm
 end
