@@ -11,17 +11,31 @@ struct PlmOut
     score::Array{Tuple{Int, Int, Float64},1}  
 end
 
+struct Attention
+    N::Int
+    H::Int
+    q::Int
+    #W::Array{Float64,3}
+    #V::Array{Float64,3}
+    # Wsf::Array{Float64,3}
+    # function Attention(N,H,q,W,V)
+    #     Wsf = zeros(Float64, H,N,N)
+    #     softmax!(Wsf, W, dims=3) 
+    #     new(N,H,q,W,V,Wsf)
+    # end
+end
+
 struct PlmVar
     N::Int
     M::Int
-    q::Int    
+    q::Int  
     q2::Int
+    H::Int
     lambdaJ::Float64
     Z::SharedArray{Int,2} #MSA
     W::SharedArray{Float64,1} #weigths 
     IdxZ::SharedArray{Int,2} #partial index computation for speed up energy calculation
-
-    function PlmVar(N,M,q,q2,lambdaJ, Z,W)
+    function PlmVar(N,M,q,q2,H,lambdaJ, Z,W)
         sZ = SharedArray{Int}(size(Z))
         sZ[:] = Z
         sW = SharedArray{Float64}(size(W))
@@ -36,7 +50,7 @@ struct PlmVar
         end
         sIdxZ = SharedArray{Int}(size(IdxZ))
         sIdxZ[:] = IdxZ
-        new(N,M,q,q2,lambdaJ, sZ, sW, sIdxZ)
+        new(N,M,q,q2,H,lambdaJ, sZ, sW, sIdxZ)
     end
 end
 

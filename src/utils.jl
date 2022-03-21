@@ -1,7 +1,13 @@
+# function optimfunwrapper(x::Vector, g::Vector, site, var)
+#     g === nothing && (g = zeros(Float64, length(x)))
+#     return PLsiteAndGrad!(x, g, site,  var)
+# end
+
 function optimfunwrapper(x::Vector, g::Vector, site, var)
     g === nothing && (g = zeros(Float64, length(x)))
-    return PLsiteAndGrad!(x, g, site,  var)
+    return attention_plsiteandgrad!(x, g, site,  var)
 end
+
 
 function inflate_matrix(J::Array{Float64,3},N)
     q,q,NN = size(J)

@@ -1,4 +1,4 @@
-function plmdca_asym(Z::Array{T,2},W::Vector{Float64};
+function plmdca_asym(Z::Array{T,2},W::Vector{Float64}, H::Int;
                 decimation::Bool=false,
                 fracmax::Real=0.3,
                 fracdec::Real=0.1,
@@ -16,31 +16,30 @@ function plmdca_asym(Z::Array{T,2},W::Vector{Float64};
     N, M = size(Z)
     M = length(W)
     q = Int(maximum(Z))
-
     plmalg = PlmAlg(method, verbose, epsconv, maxit)
-    plmvar = PlmVar(N, M, q, q * q, lambdaJ, Z, W)
+    plmvar = PlmVar(N, M, q, q * q,H,lambdaJ, Z, W)
     Jmat, pslike = MinimizePLAsym(plmalg, plmvar)
     score, FN, Jtensor =  ComputeScore(Jmat, plmvar, min_separation)
     return PlmOut(sdata(pslike), Jtensor, score)
 
 end
-plmdca(Z,W;kwds...) = plmdca_asym(Z, W;kwds...)
+plmdca(Z,W;kwds...) = plmdca_asym(Z, W, H;kwds...)
 
-function plmdca_asym(filename::String;
+function plmdca_asym(filename::String,H;
                 theta::Union{Symbol,Real}=:auto,
                 max_gap_fraction::Real=0.9,
                 remove_dups::Bool=true,
                 kwds...)
     time = @elapsed W, Z, N, M, q = ReadFasta(filename, max_gap_fraction, theta, remove_dups)
     println("preprocessing took $time seconds")
-    plmdca_asym(Z, W; kwds...)
+    plmdca_asym(Z, W, H; kwds...)
 end
 
-plmdca(filename::String; kwds...) = plmdca_asym(filename; kwds...)
+plmdca(filename::String,H::Int; kwds...) = plmdca_asym(filename,H; kwds...)
 
 function MinimizePLAsym(alg::PlmAlg, var::PlmVar)
-
-    LL = (var.N - 1) * var.q2  #number of independent variables
+    # LL = (var.N - 1) * var.q2  #number of independent variables    
+    LL = var.H*var.N*var.N + var.H*var.q2
     x0 = zeros(Float64, LL)
     vecps = SharedArray{Float64}(var.N)
     Jmat = zeros(LL,var.N) |> SharedArray
@@ -58,66 +57,54 @@ function MinimizePLAsym(alg::PlmAlg, var::PlmVar)
         vecps[site] = minf
         Jmat[:,site] .= minx
     end
-    # Jmat = @distributed hcat for site = 1:var.N # 1:12
-    #     opt = Opt(alg.method, length(x0))
-    #     ftol_abs!(opt, alg.epsconv)
-    #     xtol_rel!(opt, alg.epsconv)
-    #     xtol_abs!(opt, alg.epsconv)
-    #     ftol_rel!(opt, alg.epsconv)
-    #     maxeval!(opt, alg.maxit)
-    #     la(opt, (x, g) -> optimfunwrapper(x, g, site, var))
-    #     elapstime = @elapsed  (minf, minx, ret) = optimize(opt, x0)
-    #     alg.verbose && @printf("site = %d\t pl = %.4f\t time = %.4f\t", site, minf, elapstime)
-    #     alg.verbose && println("exit status = $ret")
-    #     vecps[site] = minf
-    #     minx
-    # end
     return sdata(Jmat), vecps
 end
-function PLsiteAndGrad!(x::Vector{Float64}, grad::Vector{Float64}, site::Int, plmvar::PlmVar)
 
-    LL = length(x)
-    q2 = plmvar.q2
-    q = plmvar.q
-    N = plmvar.N
-    M = plmvar.M
-    Z = sdata(plmvar.Z)
-    W = sdata(plmvar.W)
-    IdxZ = sdata(plmvar.IdxZ)
 
-    for i = 1:LL
-	    grad[i] = 2.0 * plmvar.lambdaJ  * x[i]
-	end
+# function PLsiteAndGrad!(x::Vector{Float64}, grad::Vector{Float64}, site::Int, plmvar::PlmVar)
+
+#     LL = length(x)
+#     q2 = plmvar.q2
+#     q = plmvar.q
+#     N = plmvar.N
+#     M = plmvar.M
+#     Z = sdata(plmvar.Z)
+#     W = sdata(plmvar.W)
+#     IdxZ = sdata(plmvar.IdxZ)
+
+#     for i = 1:LL
+# 	    grad[i] = 2.0 * plmvar.lambdaJ  * x[i]
+# 	end
 	
-	pseudolike = 0.0
-	vecene = zeros(Float64, q)
-	lnorm = 0.0
-	expvecenesumnorm = zeros(Float64, q)
+# 	pseudolike = 0.0
+# 	vecene = zeros(Float64, q)
+# 	lnorm = 0.0
+# 	expvecenesumnorm = zeros(Float64, q)
     
-    @inbounds for m = 1:M
-        izm = view(IdxZ, :, m)
-        zsm = Z[site,m]
-		fillvecene!(vecene, x, site, izm, q, N)
-	    lnorm = logsumexp(vecene)
-	    expvecenesumnorm .= @. exp(vecene - lnorm) 
-	    pseudolike -= W[m] * (vecene[ zsm ] - lnorm)
-        @avx for i = 1:site - 1
-	        for s = 1:q
-	            grad[ izm[i] + s ] += W[m] * expvecenesumnorm[s]
-	        end
-	        grad[ izm[i] + zsm ] -= W[m]
-	    end
-        @avx for i = site + 1:N
-	        for s = 1:q
-	            grad[ izm[i] - q2 + s ] += W[m] *  expvecenesumnorm[s]
-	        end
-	        grad[ izm[i] - q2 + zsm ] -= W[m]
-	    end
+#     @inbounds for m = 1:M
+#         izm = view(IdxZ, :, m)
+#         zsm = Z[site,m]
+# 		fillvecene!(vecene, x, site, izm, q, N)
+# 	    lnorm = logsumexp(vecene)
+# 	    expvecenesumnorm .= @. exp(vecene - lnorm)
+# 	    pseudolike -= W[m] * (vecene[ zsm ] - lnorm)
+#         @avx for i = 1:site - 1
+# 	        for s = 1:q
+# 	            grad[ izm[i] + s ] += W[m] * expvecenesumnorm[s]
+# 	        end
+# 	        grad[ izm[i] + zsm ] -= W[m]
+# 	    end
+#         @avx for i = site + 1:N
+# 	        for s = 1:q
+# 	            grad[ izm[i] - q2 + s ] += W[m] *  expvecenesumnorm[s]
+# 	        end
+# 	        grad[ izm[i] - q2 + zsm ] -= W[m]
+# 	    end
         
-		#grad[ (N - 1) * q2 + zsm ] -= W[m]
-	end
-	pseudolike += L2norm_asym(x, plmvar)
-end
+# 		#grad[ (N - 1) * q2 + zsm ] -= W[m]
+# 	end
+# 	pseudolike += L2norm_asym(x, plmvar)
+# end
 
 
 # Energy filling
@@ -155,7 +142,7 @@ function L2norm_asym(vec::Array{Float64,1}, plmvar::PlmVar)
     LL = length(vec)
 
     mysum = 0.0
-    @inbounds @avx for i = 1:LL    
+    @inbounds @avx for i = 1:LL 
         mysum += vec[i] * vec[i]
     end
     mysum *= lambdaJ
