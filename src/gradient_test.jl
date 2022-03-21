@@ -43,7 +43,7 @@ function loglike(Z::Matrix{Int},W,V,site)
     lge = logsumexp(mat_ene,dims=1)
     Z_site = view(Z,site,:)
     @tullio pseudologlikelihood = mat_ene[Z_site[m],m] - lge[m]
-    pseudologlikelihood /= M
+    pseudologlikelihood /= -M
     
     return pseudologlikelihood
 end
