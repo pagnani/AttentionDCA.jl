@@ -35,7 +35,7 @@ function attention_plsiteandgrad!(x::Vector{}, grad::Vector{}, site::Int, plmvar
     L == length(grad) || error("Wrong dimension of gradient vector")
 
 
-    W_site = reshape(x[1:H*N*N],H,N,N)[:,site,:]
+    W_site = reshape(x[1:H*N*N],H,N,N)[:,:,site]
     V = reshape(x[H*N*N+1:end],H,q,q)
 
 
@@ -58,11 +58,11 @@ function attention_plsiteandgrad!(x::Vector{}, grad::Vector{}, site::Int, plmvar
     mat[site,:,:] .= 0.0
 
     @inbounds for counter = 1:N*N*H
-        h,r,i = counter_to_index(counter,N,q,H)
+        h,i,r = counter_to_index(counter,N,q,H)
         if r==site
-            for j = 1:N
-                for a = 1:q 
-                    @simd for b = 1:q 
+            for b = 1:q
+                @simd for a = 1:q 
+                    for j = 1:N 
                         grad[counter] += mat[j,a,b]*V[h,a,b]*((i==j)*Wsf_site[h,i]-Wsf_site[h,i]*Wsf_site[h,j])      
                     end
                 end
@@ -90,4 +90,81 @@ end
 function sumexp(a::AbstractArray{<:Real};dims=1)
     m = maximum(a; dims=dims)
     return sum(exp.(a .- m ).*exp.(m); dims=dims)
+end
+
+
+
+function pl_and_grad!(x, grad, plmvar::PlmVar)
+    pg = pointer(grad)
+    H = plmvar.H 
+    q = plmvar.q
+    Z = plmvar.Z
+    N,M = size(Z)
+
+    L = H*N*N + H*q*q 
+
+    L == length(x) || error("Wrong dimension of parameter vector")
+    L == length(grad) || error("Wrong dimension of gradient vector")
+
+    W = reshape(x[1:H*N*N],H,N,N)
+    V = reshape(x[H*N*N+1:end],H,q,q)
+
+    pseudologlikelihood::Float64 = 0.0
+
+    Threads.@threads for site = 1:N
+        pseudologlikelihood+=upgrade_gradW_site!(Z,W,V,grad,site)
+    end
+    pg == pointer(grad) || error("Different pointer")
+    return pseudologlikelihood
+
+end
+
+function upgrade_gradW_site!(Z,W,V,grad,site)
+    pg = pointer(grad)
+    N,M = size(Z)
+    H,q,q = size(V)
+
+    W_site = view(W,:,:,site)
+    Wsf_site = softmax(W_site,dims=2)
+    @tullio J[a,b,j] := Wsf_site[h,j]*V[h,a,b]*(site!=j)
+    
+    @tullio mat_ene[a,m] := J[a,Z[j,m],j]
+
+    pl = 0.0
+    partition = sumexp(mat_ene,dims=1)
+    @tullio prob[a,m] := exp(mat_ene[a,m])/partition[m]
+    lge = log.(partition)
+    Z_site = view(Z,site,:)
+    @tullio pl = mat_ene[Z_site[m],m] - lge[m]
+    pl /= -M
+
+    #grad[(site-1)*N*H+1:site*N*H] .= 0.0
+
+    @tullio mat[j,a,b] := (Z[j,m]==b)*((Z_site[m]==a)-prob[a,m]) (a in 1:q, b in 1:q)
+    mat[site,:,:] .= 0.0
+    
+    @inbounds for counter in (site-1)*N*H+1:site*N*H 
+        h,i,r = counter_to_index(counter,N,q,H)
+        if r == site 
+            for b = 1:q
+                @simd for a = 1:q 
+                    for j = 1:N 
+                        grad[counter] += mat[j,a,b]*V[h,a,b]*((i==j)*Wsf_site[h,i]-Wsf_site[h,i]*Wsf_site[h,j])      
+                    end
+                end
+            end
+            grad[counter] /= -M
+        end
+    end
+
+
+    @inbounds for counter = H*N*N+1:H*q*q 
+        h,c,d = counter_to_index(counter,N,q,H)
+        for j = 1:N
+            grad[counter]+=Wsf_site[h,j]*mat[j,c,d]
+        end        
+        grad[counter] /= -M     
+    end 
+    pg == pointer(grad) || error("Different pointer")
+    return pl
 end

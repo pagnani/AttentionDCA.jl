@@ -34,7 +34,7 @@
 # Ex. my_fastloglike
 function loglike(Z::Matrix{Int},W,V,site)
     M = size(Z,2)
-    Wsf_site = softmax(W[:,site,:],dims=2)
+    Wsf_site = softmax(W[:,:,site],dims=2)
     @tullio J[a,b,j] := Wsf_site[h,j]*V[h,a,b]*(site!=j)
     
     @tullio mat_ene[a,m] := J[a,Z[j,m],j]
@@ -46,6 +46,17 @@ function loglike(Z::Matrix{Int},W,V,site)
     pseudologlikelihood /= -M
     
     return pseudologlikelihood
+end
+
+
+function total_loglike(Z::Matrix{Int},W,V)
+    total_pl = 0.0
+    N = size(Z,1)
+    
+    @tullio total_pl += loglike(Z::Matrix{Int},W,V,i) (i in 1:N)
+    
+    
+    return total_pl
 end
 
 

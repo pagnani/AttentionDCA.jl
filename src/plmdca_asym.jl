@@ -37,28 +37,54 @@ end
 
 plmdca(filename::String,H::Int; kwds...) = plmdca_asym(filename,H; kwds...)
 
-function MinimizePLAsym(alg::PlmAlg, var::PlmVar)
+
+function attentionMinimizePLAsym(alg::PlmAlg, var::PlmVar)
     # LL = (var.N - 1) * var.q2  #number of independent variables    
     LL = var.H*var.N*var.N + var.H*var.q2
-    x0 = zeros(Float64, LL)
-    vecps = SharedArray{Float64}(var.N)
-    Jmat = zeros(LL,var.N) |> SharedArray
-    Threads.@threads for site = 1:var.N # 1:12
-        opt = Opt(alg.method, length(x0))
-        ftol_abs!(opt, alg.epsconv)
-        xtol_rel!(opt, alg.epsconv)
-        xtol_abs!(opt, alg.epsconv)
-        ftol_rel!(opt, alg.epsconv)
-        maxeval!(opt, alg.maxit)
-        min_objective!(opt, (x, g) -> optimfunwrapper(x, g, site, var))
-        elapstime = @elapsed  (minf, minx, ret) = optimize(opt, x0)
-        alg.verbose && @printf("site = %d\t pl = %.4f\t time = %.4f\t", site, minf, elapstime)
-        alg.verbose && println("exit status = $ret")
-        vecps[site] = minf
-        Jmat[:,site] .= minx
-    end
-    return sdata(Jmat), vecps
+    x0 = rand(Float64, LL)
+    pl = 0.0
+    attention_parameters = zeros(LL) |> SharedArray
+    
+    opt = Opt(alg.method, length(x0))
+    ftol_abs!(opt, alg.epsconv)
+    xtol_rel!(opt, alg.epsconv)
+    xtol_abs!(opt, alg.epsconv)
+    ftol_rel!(opt, alg.epsconv)
+    maxeval!(opt, alg.maxit)
+    min_objective!(opt, (x, g) -> optimfunwrapper(x, g, var))
+    elapstime = @elapsed  (minf, minx, ret) = optimize(opt, x0)
+    alg.verbose && @printf("pl = %.4f\t time = %.4f\t", minf, elapstime)
+    alg.verbose && println("exit status = $ret")
+    pl = minf
+    attention_parameters .= minx
+    
+    return sdata(attention_parameters), pl
 end
+
+
+
+# function MinimizePLAsym(alg::PlmAlg, var::PlmVar)
+#     # LL = (var.N - 1) * var.q2  #number of independent variables    
+#     LL = var.H*var.N*var.N + var.H*var.q2
+#     x0 = zeros(Float64, LL)
+#     vecps = SharedArray{Float64}(var.N)
+#     attentionmat = zeros(LL,var.N) |> SharedArray
+#     Threads.@threads for site = 1:var.N 
+#         opt = Opt(alg.method, length(x0))
+#         ftol_abs!(opt, alg.epsconv)
+#         xtol_rel!(opt, alg.epsconv)
+#         xtol_abs!(opt, alg.epsconv)
+#         ftol_rel!(opt, alg.epsconv)
+#         maxeval!(opt, alg.maxit)
+#         min_objective!(opt, (x, g) -> optimfunwrapper(x, g, site, var))
+#         elapstime = @elapsed  (minf, minx, ret) = optimize(opt, x0)
+#         alg.verbose && @printf("site = %d\t pl = %.4f\t time = %.4f\t", site, minf, elapstime)
+#         alg.verbose && println("exit status = $ret")
+#         vecps[site] = minf
+#         attentionmat[:,site] .= minx
+#     end
+#     return sdata(attentionmat), vecps
+# end
 
 
 # function PLsiteAndGrad!(x::Vector{Float64}, grad::Vector{Float64}, site::Int, plmvar::PlmVar)

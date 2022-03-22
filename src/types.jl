@@ -12,7 +12,7 @@ struct PlmOut
 end
 
 struct Attention
-    N::Int
+    N::Int 
     H::Int
     q::Int
     #W::Array{Float64,3}
