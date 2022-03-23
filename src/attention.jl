@@ -95,6 +95,7 @@ end
 
 
 function pl_and_grad!(x, grad, plmvar::PlmVar)
+    println("Sto entrando")
     pg = pointer(grad)
     H = plmvar.H 
     q = plmvar.q
@@ -115,6 +116,8 @@ function pl_and_grad!(x, grad, plmvar::PlmVar)
         pseudologlikelihood+=upgrade_gradW_site!(Z,W,V,grad,site)
     end
     pg == pointer(grad) || error("Different pointer")
+    
+    println("Sto uscendo")
     return pseudologlikelihood
 
 end
