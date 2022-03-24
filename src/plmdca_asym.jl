@@ -39,9 +39,8 @@ plmdca(filename::String,H::Int; kwds...) = plmdca_asym(filename,H; kwds...)
 
 
 function attentionMinimizePLAsym(alg::PlmAlg, var::PlmVar)
-    # LL = (var.N - 1) * var.q2  #number of independent variables    
     LL = var.H*var.N*var.N + var.H*var.q2
-    x0 = rand(Float64, LL)
+    x0 = rand(Float64, LL)*0.1
     pl = 0.0
     attention_parameters = zeros(LL) |> SharedArray
     

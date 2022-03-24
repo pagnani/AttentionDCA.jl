@@ -18,7 +18,7 @@ function counter_to_index(l::Int, N::Int, Q::Int, H::Int; verbose::Bool=false)
     end
 end
 
-function attention_plsiteandgrad!(x::Vector{}, grad::Vector{}, site::Int, plmvar::PlmVar)
+function attention_plsiteandgrad!(x::Vector, grad::Vector, site::Int, plmvar::PlmVar)
     
     pgrad = pointer(grad)
 
@@ -99,6 +99,7 @@ function pl_and_grad!(x, grad, plmvar::PlmVar)
     H = plmvar.H 
     q = plmvar.q
     Z = plmvar.Z
+    lambdaJ = plmvar.lambdaJ
     N,M = size(Z)
 
     L = H*N*N + H*q*q 
@@ -109,18 +110,22 @@ function pl_and_grad!(x, grad, plmvar::PlmVar)
     W = reshape(x[1:H*N*N],H,N,N)
     V = reshape(x[H*N*N+1:end],H,q,q)
 
-    pseudologlikelihood::Float64 = 0.0
-
+    pseudologlikelihood = 0.0
+    grad .= 0.0
+     
     Threads.@threads for site = 1:N
-        pseudologlikelihood+=upgrade_gradW_site!(Z,W,V,grad,site)
+        scra = upgrade_gradW_site!(Z,W,V,grad,lambdaJ,site)
+        pseudologlikelihood += scra
     end
     pg == pointer(grad) || error("Different pointer")
-    return pseudologlikelihood
+    # println(pseudologlikelihood)
+    return sum(pseudologlikelihood)
 
 end
 
-function upgrade_gradW_site!(Z,W,V,grad,site)
+function upgrade_gradW_site!(Z,W,V,grad,lambdaJ,site)
     pg = pointer(grad)
+
     N,M = size(Z)
     H,q,q = size(V)
 
@@ -138,7 +143,7 @@ function upgrade_gradW_site!(Z,W,V,grad,site)
     @tullio pl = mat_ene[Z_site[m],m] - lge[m]
     pl /= -M
 
-    #grad[(site-1)*N*H+1:site*N*H] .= 0.0
+    grad[(site-1)*N*H+1:site*N*H] .= 0.0
 
     @tullio mat[j,a,b] := (Z[j,m]==b)*((Z_site[m]==a)-prob[a,m]) (a in 1:q, b in 1:q)
     mat[site,:,:] .= 0.0
@@ -153,18 +158,26 @@ function upgrade_gradW_site!(Z,W,V,grad,site)
                     end
                 end
             end
-            grad[counter] /= -M
         end
+        # grad[counter] += 2*lambdaJ*W[h,i,r]
+        grad[counter] /= -M 
     end
 
 
-    @inbounds for counter = H*N*N+1:H*q*q 
+    @inbounds for counter = H*N*N+1:H*N*N+H*q*q 
         h,c,d = counter_to_index(counter,N,q,H)
         for j = 1:N
             grad[counter]+=Wsf_site[h,j]*mat[j,c,d]
         end        
+        # grad[counter] += 2*lambdaJ*V[h,c,d]
         grad[counter] /= -M     
     end 
     pg == pointer(grad) || error("Different pointer")
+    
+    
+    # return pl + lambdaJ*(norm(W))^2 + lambdaJ*(norm(V))^2
+    # println(pl)
     return pl
 end
+
+
