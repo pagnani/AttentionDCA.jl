@@ -119,14 +119,8 @@ function pl_and_grad!(x, grad, plmvar::PlmVar)
         pseudologlikelihood += scra
     end
     pg == pointer(grad) || error("Different pointer")
-<<<<<<< HEAD
-    # println(pseudologlikelihood)
-    return sum(pseudologlikelihood)
-=======
-    
-    println("Sto uscendo")
+
     return pseudologlikelihood
->>>>>>> dd82328c0ebcbbdab09208a471632e0aded1b00b
 
 end
 
