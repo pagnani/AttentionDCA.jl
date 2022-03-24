@@ -95,7 +95,7 @@ end
 
 
 function pl_and_grad!(x, grad, plmvar::PlmVar)
-    println("Sto entrando")
+
     pg = pointer(grad)
     H = plmvar.H 
     q = plmvar.q
@@ -111,24 +111,30 @@ function pl_and_grad!(x, grad, plmvar::PlmVar)
     W = reshape(x[1:H*N*N],H,N,N)
     V = reshape(x[H*N*N+1:end],H,q,q)
 
-    pseudologlikelihood = 0.0
+    pseudologlikelihood = zeros(Float64, N)
     grad .= 0.0
      
-    Threads.@threads for site = 1:N
-        scra = upgrade_gradW_site!(Z,W,V,grad,lambdaJ,site)
-        pseudologlikelihood += scra
+    Threads.@threads for site = 1:N #l'upgrade è fatto male non so perchè
+        pseudologlikelihood[site] = update_gradW_site!(Z,W,V,grad,lambdaJ,site)
     end
-    pg == pointer(grad) || error("Different pointer")
 
-    return pseudologlikelihood
+    update_gradV!(Z,W,V,grad,lambdaJ)
+
+    pg == pointer(grad) || error("Different pointer")
+    
+    total_loglike = sum(pseudologlikelihood)
+    println(total_loglike)
+    return total_loglike
 
 end
 
-function upgrade_gradW_site!(Z,W,V,grad,lambdaJ,site)
+function update_gradW_site!(Z,W,V,grad,lambdaJ,site)
     pg = pointer(grad)
 
     N,M = size(Z)
     H,q,q = size(V)
+
+    L = H*N*N+H*q*q
 
     W_site = view(W,:,:,site)
     Wsf_site = softmax(W_site,dims=2)
@@ -148,7 +154,7 @@ function upgrade_gradW_site!(Z,W,V,grad,lambdaJ,site)
 
     @tullio mat[j,a,b] := (Z[j,m]==b)*((Z_site[m]==a)-prob[a,m]) (a in 1:q, b in 1:q)
     mat[site,:,:] .= 0.0
-    
+
     @inbounds for counter in (site-1)*N*H+1:site*N*H 
         h,i,r = counter_to_index(counter,N,q,H)
         if r == site 
@@ -164,21 +170,44 @@ function upgrade_gradW_site!(Z,W,V,grad,lambdaJ,site)
         grad[counter] /= -M 
     end
 
-
-    @inbounds for counter = H*N*N+1:H*N*N+H*q*q 
-        h,c,d = counter_to_index(counter,N,q,H)
-        for j = 1:N
-            grad[counter]+=Wsf_site[h,j]*mat[j,c,d]
-        end        
-        # grad[counter] += 2*lambdaJ*V[h,c,d]
-        grad[counter] /= -M     
-    end 
     pg == pointer(grad) || error("Different pointer")
-    
-    
-    # return pl + lambdaJ*(norm(W))^2 + lambdaJ*(norm(V))^2
-    # println(pl)
+
     return pl
 end
 
 
+function update_gradV!(Z,W,V,grad,lambdaJ)
+    pg = pointer(grad)
+
+    N,M = size(Z)
+    H,q,q = size(V)
+    L = H*N*N + H*q*q
+
+    grad[H*N*N+1:end] .= 0.0
+
+    Wsf = softmax(W,dims=2) #Ws[h,i,site]
+    @tullio J[a,b,j,site] := Wsf[h,j,site]*V[h,a,b]*(site!=j)
+
+    @tullio mat_ene[a,m,site] := J[a,Z[j,m],j,site]
+
+    partition = sumexp(mat_ene,dims=1)
+    part = view(partition,1,:,:)
+    @tullio prob[a,m,site] := exp(mat_ene[a,m,site])/part[m,site]
+    
+    @tullio mat[site,j,a,b] := (Z[j,m]==b)*((Z[site,m]==a)-prob[a,m,site])*(site!=j) (a in 1:q, b in 1:q)
+    # mat[site,:,:] .= 0.0
+
+
+    @inbounds for counter = H*N*N+1:L 
+        h,c,d = counter_to_index(counter,N,q,H)
+        Wsf_h = view(Wsf,h,:,:)
+        mat_cd = view(mat,:,:,c,d)
+        @tullio g = Wsf_h[j,site]*mat_cd[site,j]
+        grad[counter] = g        
+        # grad[counter] += 2*lambdaJ*V[h,c,d]
+        grad[counter] /= -M     
+    end 
+
+    pg == pointer(grad) || error("Different pointer")
+    return 
+end
