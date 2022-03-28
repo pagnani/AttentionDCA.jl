@@ -38,9 +38,13 @@ end
 plmdca(filename::String,H::Int; kwds...) = plmdca_asym(filename,H; kwds...)
 
 
-function attentionMinimizePLAsym(alg::PlmAlg, var::PlmVar)
+function attentionMinimizePLAsym(alg::PlmAlg, var::PlmVar; initx0 = nothing)
     LL = var.H*var.N*var.N + var.H*var.q2
-    x0 = rand(Float64, LL)*0.1
+    x0 = if initx0 == nothing 
+        rand(Float64, LL)
+    else 
+        initx0
+    end
     pl = 0.0
     attention_parameters = zeros(LL) |> SharedArray
     
@@ -50,7 +54,7 @@ function attentionMinimizePLAsym(alg::PlmAlg, var::PlmVar)
     xtol_abs!(opt, alg.epsconv)
     ftol_rel!(opt, alg.epsconv)
     maxeval!(opt, alg.maxit)
-    min_objective!(opt, (x, g) -> optimfunwrapper(x, g, var))
+    min_objective!(opt, (x, g) -> optimfunwrapper2(x, g, var))
     elapstime = @elapsed  (minf, minx, ret) = optimize(opt, x0)
     alg.verbose && @printf("pl = %.4f\t time = %.4f\t", minf, elapstime)
     alg.verbose && println("exit status = $ret")
@@ -58,104 +62,6 @@ function attentionMinimizePLAsym(alg::PlmAlg, var::PlmVar)
     attention_parameters .= minx
     
     return sdata(attention_parameters), pl
-end
-
-
-
-# function MinimizePLAsym(alg::PlmAlg, var::PlmVar)
-#     # LL = (var.N - 1) * var.q2  #number of independent variables    
-#     LL = var.H*var.N*var.N + var.H*var.q2
-#     x0 = zeros(Float64, LL)
-#     vecps = SharedArray{Float64}(var.N)
-#     attentionmat = zeros(LL,var.N) |> SharedArray
-#     Threads.@threads for site = 1:var.N 
-#         opt = Opt(alg.method, length(x0))
-#         ftol_abs!(opt, alg.epsconv)
-#         xtol_rel!(opt, alg.epsconv)
-#         xtol_abs!(opt, alg.epsconv)
-#         ftol_rel!(opt, alg.epsconv)
-#         maxeval!(opt, alg.maxit)
-#         min_objective!(opt, (x, g) -> optimfunwrapper(x, g, site, var))
-#         elapstime = @elapsed  (minf, minx, ret) = optimize(opt, x0)
-#         alg.verbose && @printf("site = %d\t pl = %.4f\t time = %.4f\t", site, minf, elapstime)
-#         alg.verbose && println("exit status = $ret")
-#         vecps[site] = minf
-#         attentionmat[:,site] .= minx
-#     end
-#     return sdata(attentionmat), vecps
-# end
-
-
-# function PLsiteAndGrad!(x::Vector{Float64}, grad::Vector{Float64}, site::Int, plmvar::PlmVar)
-
-#     LL = length(x)
-#     q2 = plmvar.q2
-#     q = plmvar.q
-#     N = plmvar.N
-#     M = plmvar.M
-#     Z = sdata(plmvar.Z)
-#     W = sdata(plmvar.W)
-#     IdxZ = sdata(plmvar.IdxZ)
-
-#     for i = 1:LL
-# 	    grad[i] = 2.0 * plmvar.lambdaJ  * x[i]
-# 	end
-	
-# 	pseudolike = 0.0
-# 	vecene = zeros(Float64, q)
-# 	lnorm = 0.0
-# 	expvecenesumnorm = zeros(Float64, q)
-    
-#     @inbounds for m = 1:M
-#         izm = view(IdxZ, :, m)
-#         zsm = Z[site,m]
-# 		fillvecene!(vecene, x, site, izm, q, N)
-# 	    lnorm = logsumexp(vecene)
-# 	    expvecenesumnorm .= @. exp(vecene - lnorm)
-# 	    pseudolike -= W[m] * (vecene[ zsm ] - lnorm)
-#         @avx for i = 1:site - 1
-# 	        for s = 1:q
-# 	            grad[ izm[i] + s ] += W[m] * expvecenesumnorm[s]
-# 	        end
-# 	        grad[ izm[i] + zsm ] -= W[m]
-# 	    end
-#         @avx for i = site + 1:N
-# 	        for s = 1:q
-# 	            grad[ izm[i] - q2 + s ] += W[m] *  expvecenesumnorm[s]
-# 	        end
-# 	        grad[ izm[i] - q2 + zsm ] -= W[m]
-# 	    end
-        
-# 		#grad[ (N - 1) * q2 + zsm ] -= W[m]
-# 	end
-# 	pseudolike += L2norm_asym(x, plmvar)
-# end
-
-
-# Energy filling
-
-function fillvecene!(vecene::Vector{Float64}, x::Vector{Float64}, site::Int, IdxSeq::AbstractArray{Int,1}, q::Int, N::Int)
-
-	q2 = q * q
-    @inbounds for l = 1:q
-        scra::Float64 = 0.0
-        @avx for i = 1:site - 1 # Begin sum_i \neq site J        
-            scra += x[IdxSeq[i] + l]
-        end
-        # skipping sum over residue site
-        @avx for i = site + 1:N        
-            scra +=  x[IdxSeq[i] - q2 + l]
-        end # End sum_i \neq site J
-        vecene[l] = scra
-    end
-
-end
-
-
-function logsumexp(X::Vector{Float64}) 
-    u = maximum(X)
-    isfinite(u) || return float(u)
-    return u + log(sum(x -> exp(x - u), X))
 end
 
 
@@ -214,4 +120,14 @@ function ComputeScore(Jmat::Array{Float64,2}, var::PlmVar, min_separation::Int)
     FN = compute_APC(Jtensor, N, q)
     score = compute_ranking(FN, min_separation)
     return score, FN, Jplm
+end
+
+
+
+function L2Tensor(matrix)
+    L2 = 0.0
+    for x in matrix
+        L2 += x*x 
+    end
+    return L2
 end

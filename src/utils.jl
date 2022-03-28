@@ -13,6 +13,11 @@ function optimfunwrapper(x::Vector, g::Vector, var)
     return pl_and_grad!(x, g,  var)
 end
 
+function optimfunwrapper2(x::Vector, g::Vector, var)
+    g === nothing && (g = zeros(Float64, length(x)))
+    return JL2pl_and_grad!(x, g, var)
+end
+
 function inflate_matrix(J::Array{Float64,3},N)
     q,q,NN = size(J)
 
@@ -30,15 +35,15 @@ function inflate_matrix(J::Array{Float64,3},N)
     return Jt
 end
 
-function correct_APC(S::Matrix)
-    N = size(S, 1)
-    Si = sum(S, dims=1)
-    Sj = sum(S, dims=2)
-    Sa = sum(S) * (1 - 1/N)
+# function correct_APC(S::Matrix)
+#     N = size(S, 1)
+#     Si = sum(S, dims=1)
+#     Sj = sum(S, dims=2)
+#     Sa = sum(S) * (1 - 1/N)
 
-    S -= (Sj * Si) / Sa
-    return S
-end
+#     S -= (Sj * Si) / Sa
+#     return S
+# end
 
 function compute_APC(J::Array{Float64,4},N,q)
     FN = fill(0.0, N,N)
@@ -80,12 +85,4 @@ function compute_ranking(S::Matrix{Float64}, min_separation::Int = 5)
 
     sort!(R, by=x->x[3], rev=true)
     return R 
-end
-
-function sumexp(vec::Array{Float64,1})
-    mysum = 0.0
-    @inbounds @simd for i=1:length(vec)
-        mysum += exp(vec[i])
-    end
-    return mysum
 end
