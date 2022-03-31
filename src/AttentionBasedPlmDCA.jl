@@ -6,12 +6,11 @@ import DCAUtils: read_fasta_alignment, remove_duplicate_sequences, compute_weigh
 using LoopVectorization
 using DelimitedFiles: readdlm
 
-export PlmOut, plmdca, plmdca_asym, plmdca_asym, computescore, compute_PPV
+export PlmOut, plmdca, compute_dcascore, compute_PPV
 
 include("types.jl")
 include("utils.jl")
-include("plmdca_asym.jl")
+include("attention_plmdca.jl")
 include("dcascore.jl")
-include("attention.jl")
 include("gradient_test.jl")
 end

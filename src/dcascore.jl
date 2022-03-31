@@ -1,5 +1,3 @@
-using DelimitedFiles
-
 function compute_PPV(filestruct::String, W,V; min_separation::Int=1, verbose=true, kwds...)
     H,N,N = size(W)
     score=compute_dcascore(W, V, min_separation=min_separation)
@@ -38,8 +36,7 @@ function compute_referencescore(score,dist::Dict; mindist::Int=4, cutoff::Number
     out
 end
 
-function compute_dcascore(W, V;
-    min_separation::Int=1)
+function compute_dcascore(W, V; min_separation::Int=1)
     
     H,L,L = size(W)
     H,q,q = size(V)
@@ -82,4 +79,17 @@ function correct_APC(S::Matrix)
     Sa = sum(S) * (1 - 1 / N)
     S -= (Sj * Si) / Sa
     return S
+end
+
+function compute_ranking(S::Matrix{Float64}, min_separation::Int = 5)
+    N = size(S, 1)
+    R = Array{Tuple{Int,Int,Float64}}(undef, div((N-min_separation)*(N-min_separation+1), 2))
+    counter = 0
+    for i = 1:N-min_separation, j = i+min_separation:N
+        counter += 1
+        R[counter] = (i, j, S[j,i])
+    end
+
+    sort!(R, by=x->x[3], rev=true)
+    return R 
 end

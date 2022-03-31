@@ -1,60 +1,41 @@
-# function optimfunwrapper(x::Vector, g::Vector, site, var)
-#     g === nothing && (g = zeros(Float64, length(x)))
-#     return PLsiteAndGrad!(x, g, site,  var)
-# end
-
-# function optimfunwrapper(x::Vector, g::Vector, site, var)
-#     g === nothing && (g = zeros(Float64, length(x)))
-#     return attention_plsiteandgrad!(x, g, site,  var)
-# end
-
 function optimfunwrapper(x::Vector, g::Vector, var)
     g === nothing && (g = zeros(Float64, length(x)))
-    return pl_and_grad!(x, g,  var)
+    return pl_and_grad!(g, x,  var)
 end
 
-function optimfunwrapper2(x::Vector, g::Vector, var)
+function optimfunwrapperJreg(x::Vector, g::Vector, var)
     g === nothing && (g = zeros(Float64, length(x)))
-    return JL2pl_and_grad!(x, g, var)
+    return pl_and_grad_jreg!(g, x, var)
 end
 
-function inflate_matrix(J::Array{Float64,3},N)
-    q,q,NN = size(J)
-
-    @assert (N*(N-1))>>1 == NN
-
-    Jt = zeros(q,q,N,N)
-    ctr = 0
-    for i in 1:N-1
-        for j in i+1:N
-            ctr += 1
-            Jt[:,:,i,j] = J[:,:,ctr]
-            Jt[:,:,j,i] = J[:,:,ctr]'
-        end
+function counter_to_index(l::Int, N::Int, Q::Int, H::Int; verbose::Bool=false)
+    h::Int = 0
+    if l <= H*N*N
+            j::Int = ceil(l/(N*H))
+            l = l-(N*H)*(j-1)
+            i::Int = ceil(l/H)
+            h = l-H*(i-1)
+            verbose && println("h = $h \ni = $i \nj = $j\n")
+            return h,i,j
+    else
+            l-=N*N*H
+            b::Int = ceil(l/(Q*H))
+            l-=(Q*H)*(b-1)
+            a::Int = ceil(l/H)
+            h = l-H*(a-1)
+            verbose && println("h = $h \na = $a \nb = $b \n")
+            return h, a, b
     end
-    return Jt
 end
 
-# function correct_APC(S::Matrix)
-#     N = size(S, 1)
-#     Si = sum(S, dims=1)
-#     Sj = sum(S, dims=2)
-#     Sa = sum(S) * (1 - 1/N)
+function logsumexp(a::AbstractArray{<:Real}; dims=1)
+    m = maximum(a; dims=dims)
+    return m + log.(sum(exp.(a .- m); dims=dims))
+end
 
-#     S -= (Sj * Si) / Sa
-#     return S
-# end
-
-function compute_APC(J::Array{Float64,4},N,q)
-    FN = fill(0.0, N,N)
-    for i=1:N-1
-        for j=i+1:N
-            FN[i,j] = norm(J[1:q-1,1:q-1,i,j],2)
-            FN[j,i] =FN[i,j]
-        end
-    end
-    FN=correct_APC(FN)
-    return FN
+function sumexp(a::AbstractArray{<:Real};dims=1)
+    m = maximum(a; dims=dims)
+    return sum(exp.(a .- m ).*exp.(m); dims=dims)
 end
 
 function ReadFasta(filename::AbstractString,max_gap_fraction::Real, theta::Any, remove_dups::Bool)
@@ -74,15 +55,10 @@ function ReadFasta(filename::AbstractString,max_gap_fraction::Real, theta::Any, 
     return W, Zint,N,M,q
 end
 
-function compute_ranking(S::Matrix{Float64}, min_separation::Int = 5)
-    N = size(S, 1)
-    R = Array{Tuple{Int,Int,Float64}}(undef, div((N-min_separation)*(N-min_separation+1), 2))
-    counter = 0
-    for i = 1:N-min_separation, j = i+min_separation:N
-        counter += 1
-        R[counter] = (i, j, S[j,i])
+function L2Tensor(matrix)
+    L2 = 0.0
+    for x in matrix
+        L2 += x*x 
     end
-
-    sort!(R, by=x->x[3], rev=true)
-    return R 
+    return L2
 end
