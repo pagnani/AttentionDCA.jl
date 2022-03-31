@@ -6,7 +6,7 @@ import DCAUtils: read_fasta_alignment, remove_duplicate_sequences, compute_weigh
 using LoopVectorization
 using DelimitedFiles: readdlm
 
-export PlmOut, plmdca, compute_dcascore, compute_PPV
+export PlmOut, attention_plmdca, compute_dcascore, compute_PPV
 
 include("types.jl")
 include("utils.jl")
