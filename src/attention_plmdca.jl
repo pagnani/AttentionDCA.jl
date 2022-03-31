@@ -1,8 +1,9 @@
-function attention_plmdca(Z::Array{T,2},Weights::Vector{Float64}, H::Int;
+function attention_plmdca(Z::Array{T,2},Weights::Vector{Float64}, H::Int, filedist::String;
+                filename = "result.txt",
                 min_separation::Int=1,
                 theta=:auto,
-                lambda::Real=0.0001,
-                epsconv::Real=1.0e-3,
+                lambda::Real=0.00005,
+                epsconv::Real=1.0e-4,
                 maxit::Int=1000,
                 verbose::Bool=true,
                 method::Symbol=:LD_LBFGS) where T <: Integer
@@ -14,7 +15,8 @@ function attention_plmdca(Z::Array{T,2},Weights::Vector{Float64}, H::Int;
     q = Int(maximum(Z))
     plmalg = PlmAlg(method, verbose, epsconv, maxit)
     plmvar = PlmVar(N, M, q, q*q, H, lambda, Z, Weights)
-    parameters, pslike = attentionMinimizePL(plmalg, plmvar)
+    dist = compute_residue_pair_dist(filedist)
+    parameters, pslike = attentionMinimizePL(plmalg, plmvar, dist, filename)
     W = reshape(parameters[1:H*N*N],H,N,N)
     V = reshape(parameters[H*N*N+1:end],H,q,q)
     score = compute_dcascore(W, V)
@@ -22,20 +24,19 @@ function attention_plmdca(Z::Array{T,2},Weights::Vector{Float64}, H::Int;
 
 end
 
-function attention_plmdca(filename::String,H;
+function attention_plmdca(filename::String,H,filedist::String;
                 theta::Union{Symbol,Real}=:auto,
                 max_gap_fraction::Real=0.9,
                 remove_dups::Bool=true,
                 kwds...)
     time = @elapsed Weights, Z, N, M, q = ReadFasta(filename, max_gap_fraction, theta, remove_dups)
     println("preprocessing took $time seconds")
-    attention_plmdca(Z, Weights, H; kwds...)
+    attention_plmdca(Z, Weights, H, filedist::String; kwds...)
 end
 
-plmdca(filename::String, H::Int; kwds...) = attention_plmdca(filename, H; kwds...)
+plmdca(filename::String, H::Int, filedist; kwds...) = attention_plmdca(filename, H, filedist; kwds...)
 
-
-function attentionMinimizePL(alg::PlmAlg, var::PlmVar; initx0 = nothing, Jreg = false)
+function attentionMinimizePL(alg::PlmAlg, var::PlmVar, dist, filename::String; initx0 = nothing, Jreg = false)
     LL = var.H*var.N*var.N + var.H*var.q2
     x0 = if initx0 === nothing 
         rand(Float64, LL)*0.001
@@ -51,19 +52,20 @@ function attentionMinimizePL(alg::PlmAlg, var::PlmVar; initx0 = nothing, Jreg = 
     xtol_abs!(opt, alg.epsconv)
     ftol_rel!(opt, alg.epsconv)
     maxeval!(opt, alg.maxit)
-    Jreg == false && min_objective!(opt, (x, g) -> optimfunwrapper(x, g, var))
+    file = open(filename, "a")
+    Jreg == false && min_objective!(opt, (x, g) -> optimfunwrapper(x, g, var, dist, file))
     Jreg == true && min_objective!(opt, (x, g) -> optimfunwrapperJreg(x, g, var))
     elapstime = @elapsed  (minf, minx, ret) = optimize(opt, x0)
     alg.verbose && @printf("pl = %.4f\t time = %.4f\t", minf, elapstime)
     alg.verbose && println("exit status = $ret")
     pl = minf
     attention_parameters .= minx
-    
+    close(file)
     return sdata(attention_parameters), pl
 end
 
 
-function pl_and_grad!(grad, x, plmvar::PlmVar)
+function pl_and_grad!(grad, x, plmvar::PlmVar, dist, file)
 
     pg = pointer(grad)
     N = plmvar.N
@@ -93,10 +95,18 @@ function pl_and_grad!(grad, x, plmvar::PlmVar)
 
     update_gradV!(grad,Z,W,V,weights,sumweights,lambda)
     
+    score = compute_dcascore(W,V)
+    roc = compute_referencescore(score, dist)
+    rocN = roc[N][end]
+    rocN5 = roc[div(N,5)][end]
+
     pg == pointer(grad) || error("Different pointer")
     L2 = lambda*L2Tensor(W) + lambda*L2Tensor(V)
     total_loglike = sum(pseudologlikelihood)
-    println(total_loglike," ",L2)
+    println(total_loglike," ",L2," ",roc[div(N,5)][end]," ",roc[N][end])
+     
+    write(file, "\n$total_loglike   $L2   $rocN5   $rocN")
+
     return total_loglike + L2
 
 end

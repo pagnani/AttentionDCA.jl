@@ -1,6 +1,6 @@
-function optimfunwrapper(x::Vector, g::Vector, var)
+function optimfunwrapper(x::Vector, g::Vector, var, dist, file)
     g === nothing && (g = zeros(Float64, length(x)))
-    return pl_and_grad!(g, x,  var)
+    return pl_and_grad!(g, x,  var, dist, file)
 end
 
 function optimfunwrapperJreg(x::Vector, g::Vector, var)
