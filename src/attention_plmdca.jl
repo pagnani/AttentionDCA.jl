@@ -1,9 +1,11 @@
-function attention_plmdca(Z::Array{T,2},Weights::Vector{Float64}, H::Int, filedist::String;
-                filename = "result.txt",
+function attention_plmdca(Z::Array{T,2},Weights::Vector{Float64}, H::Int;
+                structfile::Union{String,Nothing} = nothing, 
+                io::Union{String,Nothing} = nothing,
+                Jreg = false,
                 min_separation::Int=1,
                 theta=:auto,
                 lambda::Real=0.00005,
-                epsconv::Real=1.0e-4,
+                epsconv::Real=1.0e-5,
                 maxit::Int=1000,
                 verbose::Bool=true,
                 method::Symbol=:LD_LBFGS) where T <: Integer
@@ -15,28 +17,37 @@ function attention_plmdca(Z::Array{T,2},Weights::Vector{Float64}, H::Int, filedi
     q = Int(maximum(Z))
     plmalg = PlmAlg(method, verbose, epsconv, maxit)
     plmvar = PlmVar(N, M, q, q*q, H, lambda, Z, Weights)
-    dist = compute_residue_pair_dist(filedist)
-    parameters, pslike = attentionMinimizePL(plmalg, plmvar, dist, filename)
+    dist = if structfile !== nothing 
+        compute_residue_pair_dist(structfile)
+    else
+        nothing 
+    end
+    parameters, pslike = attentionMinimizePL(plmalg, plmvar, dist=dist, filename=io,verbose=verbose)
     W = reshape(parameters[1:H*N*N],H,N,N)
     V = reshape(parameters[H*N*N+1:end],H,q,q)
     score = compute_dcascore(W, V)
     return PlmOut(pslike, W, V, score)
-
 end
 
-function attention_plmdca(filename::String,H,filedist::String;
+function attention_plmdca(filename::String,H;
                 theta::Union{Symbol,Real}=:auto,
                 max_gap_fraction::Real=0.9,
                 remove_dups::Bool=true,
                 kwds...)
     time = @elapsed Weights, Z, N, M, q = ReadFasta(filename, max_gap_fraction, theta, remove_dups)
     println("preprocessing took $time seconds")
-    attention_plmdca(Z, Weights, H, filedist::String; kwds...)
+    attention_plmdca(Z, Weights, H; kwds...)
 end
 
-plmdca(filename::String, H::Int, filedist; kwds...) = attention_plmdca(filename, H, filedist; kwds...)
+plmdca(filename::String, H::Int; kwds...) = attention_plmdca(filename, H; kwds...)
 
-function attentionMinimizePL(alg::PlmAlg, var::PlmVar, dist, filename::String; initx0 = nothing, Jreg = false)
+function attentionMinimizePL(alg::PlmAlg, var::PlmVar; 
+    initx0 = nothing, 
+    dist = nothing, 
+    filename::Union{Nothing, String} = nothing, 
+    Jreg = false,
+    verbose = true)
+
     LL = var.H*var.N*var.N + var.H*var.q2
     x0 = if initx0 === nothing 
         rand(Float64, LL)*0.001
@@ -44,7 +55,7 @@ function attentionMinimizePL(alg::PlmAlg, var::PlmVar, dist, filename::String; i
         initx0
     end
     pl = 0.0
-    attention_parameters = zeros(LL) |> SharedArray
+    attention_parameters = zeros(LL)
     
     opt = Opt(alg.method, length(x0))
     ftol_abs!(opt, alg.epsconv)
@@ -52,21 +63,26 @@ function attentionMinimizePL(alg::PlmAlg, var::PlmVar, dist, filename::String; i
     xtol_abs!(opt, alg.epsconv)
     ftol_rel!(opt, alg.epsconv)
     maxeval!(opt, alg.maxit)
-    file = open(filename, "a")
-    Jreg == false && min_objective!(opt, (x, g) -> optimfunwrapper(x, g, var, dist, file))
-    Jreg == true && min_objective!(opt, (x, g) -> optimfunwrapperJreg(x, g, var))
+    file = if filename !== nothing 
+        open(filename, "a")
+    else
+        nothing
+    end
+    Jreg == false && min_objective!(opt, (x, g) -> optimfunwrapper(x, g, var, file, dist=dist, verbose=verbose))
+    # Jreg == true && min_objective!(opt, (x, g) -> optimfunwrapperJreg(x, g, var, dist, file))
     elapstime = @elapsed  (minf, minx, ret) = optimize(opt, x0)
     alg.verbose && @printf("pl = %.4f\t time = %.4f\t", minf, elapstime)
     alg.verbose && println("exit status = $ret")
     pl = minf
     attention_parameters .= minx
-    close(file)
-    return sdata(attention_parameters), pl
+    if filename !== nothing 
+        close(file)
+    end
+    return attention_parameters, pl
 end
 
 
-function pl_and_grad!(grad, x, plmvar::PlmVar, dist, file)
-
+function pl_and_grad!(grad, x, plmvar::PlmVar, file; dist = nothing, verbose = true)
     pg = pointer(grad)
     N = plmvar.N
     M = plmvar.M 
@@ -77,7 +93,7 @@ function pl_and_grad!(grad, x, plmvar::PlmVar, dist, file)
     weights = plmvar.W
     Z = plmvar.Z
     
-    sumweights = sum(weights)
+
     L = H*N*N + H*q2
 
     L == length(x) || error("Wrong dimension of parameter vector")
@@ -88,32 +104,37 @@ function pl_and_grad!(grad, x, plmvar::PlmVar, dist, file)
 
     pseudologlikelihood = zeros(Float64, N)
     grad .= 0.0
-     
+
     Threads.@threads for site = 1:N #l'upgrade è fatto male non so perchè
-        pseudologlikelihood[site] = update_gradW_site!(grad,Z,W,V,site,weights,sumweights,lambda)
+        pseudologlikelihood[site] = update_gradW_site!(grad,Z,W,V,site,weights,lambda)
     end
 
-    update_gradV!(grad,Z,W,V,weights,sumweights,lambda)
+    update_gradV!(grad,Z,W,V,weights,lambda)
     
-    score = compute_dcascore(W,V)
-    roc = compute_referencescore(score, dist)
-    rocN = roc[N][end]
-    rocN5 = roc[div(N,5)][end]
-
-    pg == pointer(grad) || error("Different pointer")
     L2 = lambda*L2Tensor(W) + lambda*L2Tensor(V)
     total_loglike = sum(pseudologlikelihood)
-    println(total_loglike," ",L2," ",roc[div(N,5)][end]," ",roc[N][end])
-     
-    write(file, "\n$total_loglike   $L2   $rocN5   $rocN")
 
+    if dist !== nothing 
+        score = compute_dcascore(W,V)
+        roc = compute_referencescore(score, dist)
+        rocN = roc[N][end]
+        rocN5 = roc[div(N,5)][end]
+        
+        file !== nothing && write(file, "$total_loglike   "*"$L2   "*"$rocN5   "*"$rocN"*"\n")
+        verbose && println("$total_loglike   "*"$L2   "*"$rocN5   "*"$rocN")
+    else
+        file !== nothing && write(file, "$total_loglike   "*"$L2"*"\n")
+        verbose && println("$total_loglike   "*"$L2")
+    end
+    
+    pg == pointer(grad) || error("Different pointer")
     return total_loglike + L2
 
 end
 
-function update_gradW_site!(grad,Z,W,V,site,weights,sumweights,lambda)
+function update_gradW_site!(grad,Z,W,V,site,weights,lambda)
     pg = pointer(grad)
-    
+
     N,M = size(Z)
     H,q,q = size(V)
 
@@ -121,24 +142,24 @@ function update_gradW_site!(grad,Z,W,V,site,weights,sumweights,lambda)
     
     W_site = view(W,:,:,site)
     Wsf_site = softmax(W_site,dims=2)
-    @tullio J[a,b,j] := Wsf_site[h,j]*V[h,a,b]*(site!=j)
+    @tullio threads=true fastmath=true avx=true grad=false J[a,b,j] := Wsf_site[h,j]*V[h,a,b]*(site!=j)
     
-    @tullio mat_ene[a,m] := J[a,Z[j,m],j]
+    @tullio threads=true fastmath=true avx=true grad=false mat_ene[a,m] := J[a,Z[j,m],j]
 
     pl = 0.0
     partition = sumexp(mat_ene,dims=1)
-    @tullio prob[a,m] := exp(mat_ene[a,m])/partition[m]
+    @tullio threads=true fastmath=true avx=true grad=false prob[a,m] := exp(mat_ene[a,m])/partition[m]
     lge = log.(partition)
     Z_site = view(Z,site,:)
-    @tullio pl = weights[m]*(mat_ene[Z_site[m],m] - lge[m])
-    pl /= -sumweights
+    @tullio threads=true fastmath=true avx=true grad=false pl = weights[m]*(mat_ene[Z_site[m],m] - lge[m])
+    pl *= -1
     
 
     grad[(site-1)*N*H+1:site*N*H] .= 0.0
 
-    @tullio mat[j,a,b] := weights[m]*(Z[j,m]==b)*((Z_site[m]==a)-prob[a,m]) (a in 1:q, b in 1:q)
+    @tullio threads=true fastmath=true avx=true grad=false mat[j,a,b] := weights[m]*(Z[j,m]==b)*((Z_site[m]==a)-prob[a,m]) (a in 1:q, b in 1:q)
     mat[site,:,:] .= 0.0
-    @tullio fact[j,h] := mat[j,a,b]*V[h,a,b]
+    @tullio threads=true fastmath=true avx=true grad=false fact[j,h] := mat[j,a,b]*V[h,a,b]
 
     @inbounds for counter in (site-1)*N*H+1:site*N*H 
         h,i,r = counter_to_index(counter,N,q,H)
@@ -146,7 +167,7 @@ function update_gradW_site!(grad,Z,W,V,site,weights,sumweights,lambda)
             @simd for j = 1:N 
                 grad[counter] += fact[j,h]*((i==j)*Wsf_site[h,i]-Wsf_site[h,i]*Wsf_site[h,j]) 
             end
-            grad[counter] /= -sumweights
+            grad[counter] *= -1
         end
         grad[counter] += 2*lambda*W[h,i,r]
     end
@@ -157,7 +178,7 @@ function update_gradW_site!(grad,Z,W,V,site,weights,sumweights,lambda)
 end
 
 
-function update_gradV!(grad,Z,W,V,weights,sumweights,lambda)
+function update_gradV!(grad,Z,W,V,weights,lambda)
     pg = pointer(grad)
 
     N,_ = size(Z)
@@ -168,15 +189,15 @@ function update_gradV!(grad,Z,W,V,weights,sumweights,lambda)
     grad[H*N*N+1:end] .= 0.0
 
     Wsf = softmax(W,dims=2) #Ws[h,i,site]
-    @tullio J[a,b,j,site] := Wsf[h,j,site]*V[h,a,b]*(site!=j)
+    @tullio threads=true fastmath=true avx=true grad=false J[a,b,j,site] := Wsf[h,j,site]*V[h,a,b]*(site!=j)
 
-    @tullio mat_ene[a,m,site] := J[a,Z[j,m],j,site]
+    @tullio threads=true fastmath=true avx=true grad=false mat_ene[a,m,site] := J[a,Z[j,m],j,site]
 
     partition = sumexp(mat_ene,dims=1)
     part = view(partition,1,:,:)
-    @tullio prob[a,m,site] := exp(mat_ene[a,m,site])/part[m,site]
+    @tullio threads=true fastmath=true avx=true grad=false prob[a,m,site] := exp(mat_ene[a,m,site])/part[m,site]
     
-    @tullio mat[site,j,a,b] := weights[m]*(Z[j,m]==b)*((Z[site,m]==a)-prob[a,m,site])*(site!=j) (a in 1:q, b in 1:q)
+    @tullio threads=true fastmath=true avx=true grad=false mat[site,j,a,b] := weights[m]*(Z[j,m]==b)*((Z[site,m]==a)-prob[a,m,site])*(site!=j) (a in 1:q, b in 1:q)
     # mat[site,:,:] .= 0.0
 
 
@@ -184,10 +205,10 @@ function update_gradV!(grad,Z,W,V,weights,sumweights,lambda)
         h,c,d = counter_to_index(counter,N,q,H)
         Wsf_h = view(Wsf,h,:,:)
         mat_cd = view(mat,:,:,c,d)
-        @tullio g = Wsf_h[j,site]*mat_cd[site,j]
+        @tullio threads=true fastmath=true avx=true grad=false g = Wsf_h[j,site]*mat_cd[site,j]
         grad[counter] = g        
 
-        grad[counter] /= -sumweights  
+        grad[counter] *= -1 
         grad[counter] += 2*lambda*V[h,c,d]
     end 
 
@@ -197,7 +218,7 @@ function update_gradV!(grad,Z,W,V,weights,sumweights,lambda)
     return 
 end
 
-function pl_and_grad_Jreg!(grad,x,plmvar::PlmVar)
+function pl_and_grad_Jreg!(grad,x,plmvar, dist, file)
     
     pg = pointer(grad)
     H = plmvar.H 
@@ -206,7 +227,7 @@ function pl_and_grad_Jreg!(grad,x,plmvar::PlmVar)
     lambda = plmvar.lambda
     N,M = size(Z)
     weights = plmvar.W
-    sumweights = sum(weights)
+    
 
     L = H*N*N + H*q*q 
 
@@ -221,22 +242,30 @@ function pl_and_grad_Jreg!(grad,x,plmvar::PlmVar)
     grad .= 0.0
      
     Threads.@threads for site = 1:N
-        pseudologlikelihood[site],l2[site] = update_gradW_site_Jreg!(grad,Z,W,V,weights,sumweights,lambda,site)
+        pseudologlikelihood[site],l2[site] = update_gradW_site_Jreg!(grad,Z,W,V,weights,lambda,site)
     end
 
 
-    update_gradV_Jreg!(grad,Z,W,V,weights,sumweights,lambda)
+    update_gradV_Jreg!(grad,Z,W,V,weights,lambda)
     
+
+    score = compute_dcascore(W,V)
+    roc = compute_referencescore(score, dist)
+    rocN = roc[N][end]
+    rocN5 = roc[div(N,5)][end]
+
     pg == pointer(grad) || error("Different pointer")
     
     total_loglike = sum(pseudologlikelihood)
     L2 = sum(l2)
-    println(total_loglike," ",L2)
+    println(total_loglike," ",L2," ",rocN5," ",rocN)
+    write(file, "\n$total_loglike   $L2   $rocN5   $rocN")
+    
     return total_loglike + L2
 
 end
 
-function update_gradW_site_Jreg!(Z,W,V,grad,weights,sumweights,lambda,site)
+function update_gradW_site_Jreg!(Z,W,V,grad,weights,lambda,site)
     
     pg = pointer(grad)
 
@@ -248,25 +277,25 @@ function update_gradW_site_Jreg!(Z,W,V,grad,weights,sumweights,lambda,site)
 
     W_site = view(W,:,:,site)
     Wsf_site = softmax(W_site,dims=2)
-    @tullio J[a,b,j] := Wsf_site[h,j]*V[h,a,b]*(site!=j)
+    @tullio threads=false fastmath=true avx=true grad=false J[a,b,j] := Wsf_site[h,j]*V[h,a,b]*(site!=j)
     
-    @tullio mat_ene[a,m] := J[a,Z[j,m],j]
+    @tullio threads=false fastmath=true avx=true grad=false mat_ene[a,m] := J[a,Z[j,m],j]
 
     pl = 0.0
     partition = sumexp(mat_ene,dims=1)
-    @tullio prob[a,m] := exp(mat_ene[a,m])/partition[m]
+    @tullio threads=false fastmath=true avx=true grad=false prob[a,m] := exp(mat_ene[a,m])/partition[m]
     lge = log.(partition)
     Z_site = view(Z,site,:)
-    @tullio pl = weights[m]*(mat_ene[Z_site[m],m] - lge[m])
-    pl /= -sumweights
+    @tullio threads=false fastmath=true avx=true grad=false pl = weights[m]*(mat_ene[Z_site[m],m] - lge[m])
+    pl *= -1
     
 
     grad[(site-1)*N*H+1:site*N*H] .= 0.0
 
-    @tullio mat[j,a,b] := weights[m]*(Z[j,m]==b)*((Z_site[m]==a)-prob[a,m]) (a in 1:q, b in 1:q)
+    @tullio threads=false fastmath=true avx=true grad=false mat[j,a,b] := weights[m]*(Z[j,m]==b)*((Z_site[m]==a)-prob[a,m]) (a in 1:q, b in 1:q)
     mat[site,:,:] .= 0.0
-    @tullio fact[j,h] := mat[j,a,b]*V[h,a,b]
-    @tullio fact2[j,h] := J[a,b,j]*V[h,a,b]
+    @tullio threads=false fastmath=true avx=true grad=false fact[j,h] := mat[j,a,b]*V[h,a,b]
+    @tullio threads=false fastmath=true avx=true grad=false fact2[j,h] := J[a,b,j]*V[h,a,b]
 
     @inbounds for counter in (site-1)*N*H+1:site*N*H 
         L2 = 0.0
@@ -277,7 +306,7 @@ function update_gradW_site_Jreg!(Z,W,V,grad,weights,sumweights,lambda,site)
                 L2 += fact2[j,h]*((i==j)*Wsf_site[h,j] - Wsf_site[h,i]*Wsf_site[h,j])
             end
         end
-        grad[counter] /= -sumweights
+        grad[counter] *= -1
         grad[counter] += lambda*L2
 
     end
@@ -288,7 +317,7 @@ function update_gradW_site_Jreg!(Z,W,V,grad,weights,sumweights,lambda,site)
 end
 
 
-function update_gradV_Jreg!(grad,Z,W,V,weights,sumweights,lambda)
+function update_gradV_Jreg!(grad,Z,W,V,weights,lambda)
     pg = pointer(grad)
 
     N,_ = size(Z)
@@ -299,15 +328,15 @@ function update_gradV_Jreg!(grad,Z,W,V,weights,sumweights,lambda)
     grad[H*N*N+1:end] .= 0.0
 
     Wsf = softmax(W,dims=2) #Ws[h,i,site]
-    @tullio J[a,b,j,site] := Wsf[h,j,site]*V[h,a,b]*(site!=j)
+    @tullio threads=false fastmath=true avx=true grad=false J[a,b,j,site] := Wsf[h,j,site]*V[h,a,b]*(site!=j)
 
-    @tullio mat_ene[a,m,site] := J[a,Z[j,m],j,site]
+    @tullio threads=false fastmath=true avx=true grad=false mat_ene[a,m,site] := J[a,Z[j,m],j,site]
 
     partition = sumexp(mat_ene,dims=1)
     part = view(partition,1,:,:)
-    @tullio prob[a,m,site] := exp(mat_ene[a,m,site])/part[m,site]
+    @tullio threads=false fastmath=true avx=true grad=false prob[a,m,site] := exp(mat_ene[a,m,site])/part[m,site]
     
-    @tullio mat[site,j,a,b] := weights[m]*(Z[j,m]==b)*((Z[site,m]==a)-prob[a,m,site])*(site!=j) (a in 1:q, b in 1:q)
+    @tullio threads=false fastmath=true avx=true grad=false mat[site,j,a,b] := weights[m]*(Z[j,m]==b)*((Z[site,m]==a)-prob[a,m,site])*(site!=j) (a in 1:q, b in 1:q)
     # mat[site,:,:] .= 0.0
 
 
@@ -316,12 +345,12 @@ function update_gradV_Jreg!(grad,Z,W,V,weights,sumweights,lambda)
         h,c,d = counter_to_index(counter,N,q,H)
         Wsf_h = view(Wsf,h,:,:)
         mat_cd = view(mat,:,:,c,d)
-        @tullio g = Wsf_h[j,site]*mat_cd[site,j]
+        @tullio threads=false fastmath=true avx=true grad=false g = Wsf_h[j,site]*mat_cd[site,j]
         grad[counter] = g
         J_cd = view(J,c,d,:,:)
-        @tullio L2 = J_cd[y,x]*Wsf_h[y,x]        
+        @tullio threads=false fastmath=true avx=true grad=false L2 = J_cd[y,x]*Wsf_h[y,x]        
         
-        grad[counter] /= -sumweights     
+        grad[counter] *= -1     
         grad[counter] += 2*lambda*L2
     end 
 
