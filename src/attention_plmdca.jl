@@ -1,6 +1,6 @@
 function attention_plmdca(Z::Array{T,2},Weights::Vector{Float64}, H::Int;
                 structfile::Union{String,Nothing} = nothing, 
-                io::Union{String,Nothing} = nothing,
+                output::Union{String,Nothing} = nothing,
                 Jreg = false,
                 min_separation::Int=1,
                 theta=:auto,
@@ -22,7 +22,7 @@ function attention_plmdca(Z::Array{T,2},Weights::Vector{Float64}, H::Int;
     else
         nothing 
     end
-    parameters, pslike = attentionMinimizePL(plmalg, plmvar, dist=dist, filename=io,verbose=verbose)
+    parameters, pslike = attentionMinimizePL(plmalg, plmvar, dist=dist, output=output,verbose=verbose)
     W = reshape(parameters[1:H*N*N],H,N,N)
     V = reshape(parameters[H*N*N+1:end],H,q,q)
     score = compute_dcascore(W, V)
@@ -44,7 +44,7 @@ plmdca(filename::String, H::Int; kwds...) = attention_plmdca(filename, H; kwds..
 function attentionMinimizePL(alg::PlmAlg, var::PlmVar; 
     initx0 = nothing, 
     dist = nothing, 
-    filename::Union{Nothing, String} = nothing, 
+    output::Union{Nothing, String} = nothing, 
     Jreg = false,
     verbose = true)
 
@@ -63,8 +63,8 @@ function attentionMinimizePL(alg::PlmAlg, var::PlmVar;
     xtol_abs!(opt, alg.epsconv)
     ftol_rel!(opt, alg.epsconv)
     maxeval!(opt, alg.maxit)
-    file = if filename !== nothing 
-        open(filename, "a")
+    file = if output !== nothing 
+        open(output, "a")
     else
         nothing
     end
@@ -75,7 +75,7 @@ function attentionMinimizePL(alg::PlmAlg, var::PlmVar;
     alg.verbose && println("exit status = $ret")
     pl = minf
     attention_parameters .= minx
-    if filename !== nothing 
+    if output !== nothing 
         close(file)
     end
     return attention_parameters, pl
