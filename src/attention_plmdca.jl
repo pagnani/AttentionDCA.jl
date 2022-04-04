@@ -218,143 +218,143 @@ function update_gradV!(grad,Z,W,V,weights,lambda)
     return 
 end
 
-function pl_and_grad_Jreg!(grad,x,plmvar, dist, file)
+# function pl_and_grad_Jreg!(grad,x,plmvar, dist, file)
     
-    pg = pointer(grad)
-    H = plmvar.H 
-    q = plmvar.q
-    Z = plmvar.Z
-    lambda = plmvar.lambda
-    N,M = size(Z)
-    weights = plmvar.W
+#     pg = pointer(grad)
+#     H = plmvar.H 
+#     q = plmvar.q
+#     Z = plmvar.Z
+#     lambda = plmvar.lambda
+#     N,M = size(Z)
+#     weights = plmvar.W
     
 
-    L = H*N*N + H*q*q 
+#     L = H*N*N + H*q*q 
 
-    L == length(x) || error("Wrong dimension of parameter vector")
-    L == length(grad) || error("Wrong dimension of gradient vector")
+#     L == length(x) || error("Wrong dimension of parameter vector")
+#     L == length(grad) || error("Wrong dimension of gradient vector")
 
-    W = reshape(x[1:H*N*N],H,N,N)
-    V = reshape(x[H*N*N+1:end],H,q,q)
+#     W = reshape(x[1:H*N*N],H,N,N)
+#     V = reshape(x[H*N*N+1:end],H,q,q)
 
-    pseudologlikelihood = zeros(Float64, N)
-    l2 = zeros(Float64, N)
-    grad .= 0.0
+#     pseudologlikelihood = zeros(Float64, N)
+#     l2 = zeros(Float64, N)
+#     grad .= 0.0
      
-    Threads.@threads for site = 1:N
-        pseudologlikelihood[site],l2[site] = update_gradW_site_Jreg!(grad,Z,W,V,weights,lambda,site)
-    end
+#     Threads.@threads for site = 1:N
+#         pseudologlikelihood[site],l2[site] = update_gradW_site_Jreg!(grad,Z,W,V,weights,lambda,site)
+#     end
 
 
-    update_gradV_Jreg!(grad,Z,W,V,weights,lambda)
+#     update_gradV_Jreg!(grad,Z,W,V,weights,lambda)
     
 
-    score = compute_dcascore(W,V)
-    roc = compute_referencescore(score, dist)
-    rocN = roc[N][end]
-    rocN5 = roc[div(N,5)][end]
+#     score = compute_dcascore(W,V)
+#     roc = compute_referencescore(score, dist)
+#     rocN = roc[N][end]
+#     rocN5 = roc[div(N,5)][end]
 
-    pg == pointer(grad) || error("Different pointer")
+#     pg == pointer(grad) || error("Different pointer")
     
-    total_loglike = sum(pseudologlikelihood)
-    L2 = sum(l2)
-    println(total_loglike," ",L2," ",rocN5," ",rocN)
-    write(file, "\n$total_loglike   $L2   $rocN5   $rocN")
+#     total_loglike = sum(pseudologlikelihood)
+#     L2 = sum(l2)
+#     println(total_loglike," ",L2," ",rocN5," ",rocN)
+#     write(file, "\n$total_loglike   $L2   $rocN5   $rocN")
     
-    return total_loglike + L2
+#     return total_loglike + L2
 
-end
+# end
 
-function update_gradW_site_Jreg!(Z,W,V,grad,weights,lambda,site)
+# function update_gradW_site_Jreg!(Z,W,V,grad,weights,lambda,site)
     
-    pg = pointer(grad)
+#     pg = pointer(grad)
 
-    N,M = size(Z)
-    H,q,q = size(V)
+#     N,M = size(Z)
+#     H,q,q = size(V)
 
-    L = H*N*N+H*q*q
+#     L = H*N*N+H*q*q
 
 
-    W_site = view(W,:,:,site)
-    Wsf_site = softmax(W_site,dims=2)
-    @tullio threads=false fastmath=true avx=true grad=false J[a,b,j] := Wsf_site[h,j]*V[h,a,b]*(site!=j)
+#     W_site = view(W,:,:,site)
+#     Wsf_site = softmax(W_site,dims=2)
+#     @tullio threads=false fastmath=true avx=true grad=false J[a,b,j] := Wsf_site[h,j]*V[h,a,b]*(site!=j)
     
-    @tullio threads=false fastmath=true avx=true grad=false mat_ene[a,m] := J[a,Z[j,m],j]
+#     @tullio threads=false fastmath=true avx=true grad=false mat_ene[a,m] := J[a,Z[j,m],j]
 
-    pl = 0.0
-    partition = sumexp(mat_ene,dims=1)
-    @tullio threads=false fastmath=true avx=true grad=false prob[a,m] := exp(mat_ene[a,m])/partition[m]
-    lge = log.(partition)
-    Z_site = view(Z,site,:)
-    @tullio threads=false fastmath=true avx=true grad=false pl = weights[m]*(mat_ene[Z_site[m],m] - lge[m])
-    pl *= -1
+#     pl = 0.0
+#     partition = sumexp(mat_ene,dims=1)
+#     @tullio threads=false fastmath=true avx=true grad=false prob[a,m] := exp(mat_ene[a,m])/partition[m]
+#     lge = log.(partition)
+#     Z_site = view(Z,site,:)
+#     @tullio threads=false fastmath=true avx=true grad=false pl = weights[m]*(mat_ene[Z_site[m],m] - lge[m])
+#     pl *= -1
     
 
-    grad[(site-1)*N*H+1:site*N*H] .= 0.0
+#     grad[(site-1)*N*H+1:site*N*H] .= 0.0
 
-    @tullio threads=false fastmath=true avx=true grad=false mat[j,a,b] := weights[m]*(Z[j,m]==b)*((Z_site[m]==a)-prob[a,m]) (a in 1:q, b in 1:q)
-    mat[site,:,:] .= 0.0
-    @tullio threads=false fastmath=true avx=true grad=false fact[j,h] := mat[j,a,b]*V[h,a,b]
-    @tullio threads=false fastmath=true avx=true grad=false fact2[j,h] := J[a,b,j]*V[h,a,b]
+#     @tullio threads=false fastmath=true avx=true grad=false mat[j,a,b] := weights[m]*(Z[j,m]==b)*((Z_site[m]==a)-prob[a,m]) (a in 1:q, b in 1:q)
+#     mat[site,:,:] .= 0.0
+#     @tullio threads=false fastmath=true avx=true grad=false fact[j,h] := mat[j,a,b]*V[h,a,b]
+#     @tullio threads=false fastmath=true avx=true grad=false fact2[j,h] := J[a,b,j]*V[h,a,b]
 
-    @inbounds for counter in (site-1)*N*H+1:site*N*H 
-        L2 = 0.0
-        h,i,r = counter_to_index(counter,N,q,H)
-        if r == site 
-            @simd for j = 1:N 
-                grad[counter] += fact[j,h]*((i==j)*Wsf_site[h,i]-Wsf_site[h,i]*Wsf_site[h,j]) 
-                L2 += fact2[j,h]*((i==j)*Wsf_site[h,j] - Wsf_site[h,i]*Wsf_site[h,j])
-            end
-        end
-        grad[counter] *= -1
-        grad[counter] += lambda*L2
+#     @inbounds for counter in (site-1)*N*H+1:site*N*H 
+#         L2 = 0.0
+#         h,i,r = counter_to_index(counter,N,q,H)
+#         if r == site 
+#             @simd for j = 1:N 
+#                 grad[counter] += fact[j,h]*((i==j)*Wsf_site[h,i]-Wsf_site[h,i]*Wsf_site[h,j]) 
+#                 L2 += fact2[j,h]*((i==j)*Wsf_site[h,j] - Wsf_site[h,i]*Wsf_site[h,j])
+#             end
+#         end
+#         grad[counter] *= -1
+#         grad[counter] += lambda*L2
 
-    end
+#     end
 
-    pg == pointer(grad) || error("Different pointer")
+#     pg == pointer(grad) || error("Different pointer")
 
-    return pl, lambda*L2Tensor(J)
-end
+#     return pl, lambda*L2Tensor(J)
+# end
 
 
-function update_gradV_Jreg!(grad,Z,W,V,weights,lambda)
-    pg = pointer(grad)
+# function update_gradV_Jreg!(grad,Z,W,V,weights,lambda)
+#     pg = pointer(grad)
 
-    N,_ = size(Z)
-    H,q,q = size(V)
+#     N,_ = size(Z)
+#     H,q,q = size(V)
 
-    L = H*N*N + H*q*q
+#     L = H*N*N + H*q*q
 
-    grad[H*N*N+1:end] .= 0.0
+#     grad[H*N*N+1:end] .= 0.0
 
-    Wsf = softmax(W,dims=2) #Ws[h,i,site]
-    @tullio threads=false fastmath=true avx=true grad=false J[a,b,j,site] := Wsf[h,j,site]*V[h,a,b]*(site!=j)
+#     Wsf = softmax(W,dims=2) #Ws[h,i,site]
+#     @tullio threads=false fastmath=true avx=true grad=false J[a,b,j,site] := Wsf[h,j,site]*V[h,a,b]*(site!=j)
 
-    @tullio threads=false fastmath=true avx=true grad=false mat_ene[a,m,site] := J[a,Z[j,m],j,site]
+#     @tullio threads=false fastmath=true avx=true grad=false mat_ene[a,m,site] := J[a,Z[j,m],j,site]
 
-    partition = sumexp(mat_ene,dims=1)
-    part = view(partition,1,:,:)
-    @tullio threads=false fastmath=true avx=true grad=false prob[a,m,site] := exp(mat_ene[a,m,site])/part[m,site]
+#     partition = sumexp(mat_ene,dims=1)
+#     part = view(partition,1,:,:)
+#     @tullio threads=false fastmath=true avx=true grad=false prob[a,m,site] := exp(mat_ene[a,m,site])/part[m,site]
     
-    @tullio threads=false fastmath=true avx=true grad=false mat[site,j,a,b] := weights[m]*(Z[j,m]==b)*((Z[site,m]==a)-prob[a,m,site])*(site!=j) (a in 1:q, b in 1:q)
-    # mat[site,:,:] .= 0.0
+#     @tullio threads=false fastmath=true avx=true grad=false mat[site,j,a,b] := weights[m]*(Z[j,m]==b)*((Z[site,m]==a)-prob[a,m,site])*(site!=j) (a in 1:q, b in 1:q)
+#     # mat[site,:,:] .= 0.0
 
 
-    @inbounds for counter = H*N*N+1:L 
-        L2 = 0.0
-        h,c,d = counter_to_index(counter,N,q,H)
-        Wsf_h = view(Wsf,h,:,:)
-        mat_cd = view(mat,:,:,c,d)
-        @tullio threads=false fastmath=true avx=true grad=false g = Wsf_h[j,site]*mat_cd[site,j]
-        grad[counter] = g
-        J_cd = view(J,c,d,:,:)
-        @tullio threads=false fastmath=true avx=true grad=false L2 = J_cd[y,x]*Wsf_h[y,x]        
+#     @inbounds for counter = H*N*N+1:L 
+#         L2 = 0.0
+#         h,c,d = counter_to_index(counter,N,q,H)
+#         Wsf_h = view(Wsf,h,:,:)
+#         mat_cd = view(mat,:,:,c,d)
+#         @tullio threads=false fastmath=true avx=true grad=false g = Wsf_h[j,site]*mat_cd[site,j]
+#         grad[counter] = g
+#         J_cd = view(J,c,d,:,:)
+#         @tullio threads=false fastmath=true avx=true grad=false L2 = J_cd[y,x]*Wsf_h[y,x]        
         
-        grad[counter] *= -1     
-        grad[counter] += 2*lambda*L2
-    end 
+#         grad[counter] *= -1     
+#         grad[counter] += 2*lambda*L2
+#     end 
 
-    pg == pointer(grad) || error("Different pointer")
+#     pg == pointer(grad) || error("Different pointer")
 
-    return 
-end
+#     return 
+# end
