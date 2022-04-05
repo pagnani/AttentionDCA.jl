@@ -113,3 +113,21 @@ function compute_ranking(S::Matrix{Float64}, min_separation::Int = 5)
     sort!(R, by=x->x[3], rev=true)
     return R 
 end
+
+
+function compute_actualroc(filestruct)
+    distances=sort(readdlm(filestruct)[:,4])
+    L = length(distances)
+    l = 0
+    for i in 1:L
+        if distances[i]>7.0
+            l = i 
+            break 
+        end
+    end
+    L -= l
+    x = zeros(L)
+    fill!(x,1.0)
+    scra = map(x->L/x,[L+1:L+l;])
+    return vcat(x,scra) 
+end
