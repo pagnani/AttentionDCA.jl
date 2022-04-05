@@ -3,6 +3,11 @@ function optimfunwrapper(x::Vector, g::Vector, var, file; dist=nothing, verbose=
     return pl_and_grad!(g, x,  var, file; dist = dist, verbose=verbose)
 end
 
+function paralleloptimfunwrapper(x::Vector, g::Vector, var, file; dist=nothing, verbose=true)
+    g === nothing && (g = zeros(Float64, length(x)))
+    return parallel_pl_and_grad!(g, x,  var, file; dist = dist, verbose=verbose)
+end
+
 # function optimfunwrapperJreg(x::Vector, g::Vector, var, dist, file)
 #     g === nothing && (g = zeros(Float64, length(x)))
 #     return pl_and_grad_jreg!(g, x, var, dist, file)

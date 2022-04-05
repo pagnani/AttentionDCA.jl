@@ -1,6 +1,7 @@
 function attention_plmdca(Z::Array{T,2},Weights::Vector{Float64}, H::Int;
                 structfile::Union{String,Nothing} = nothing, 
                 output::Union{String,Nothing} = nothing,
+                parallel = false,
                 Jreg = false,
                 min_separation::Int=1,
                 theta=:auto,
@@ -22,11 +23,18 @@ function attention_plmdca(Z::Array{T,2},Weights::Vector{Float64}, H::Int;
     else
         nothing 
     end
-    parameters, pslike = attentionMinimizePL(plmalg, plmvar, dist=dist, output=output,verbose=verbose)
+    parameters, pslike = attentionMinimizePL(plmalg, plmvar, dist=dist, output=output,verbose=verbose,parallel=parallel)
     W = reshape(parameters[1:H*N*N],H,N,N)
-    V = reshape(parameters[H*N*N+1:end],H,q,q)
-    score = compute_dcascore(W, V)
-    return PlmOut(pslike, W, V, score)
+    if parallel 
+        V = reshape(parameters[H*N*N+1:end],H,q,q,N)
+        score = parallel_compute_dcascore(W, V)
+        return PlmOutParallel(pslike, W, V, score)
+    else
+        V = reshape(parameters[H*N*N+1:end],H,q,q)
+        score = compute_dcascore(W, V)
+        return PlmOut(pslike, W, V, score)
+    end
+    
 end
 
 function attention_plmdca(filename::String,H;
@@ -46,9 +54,14 @@ function attentionMinimizePL(alg::PlmAlg, var::PlmVar;
     dist = nothing, 
     output::Union{Nothing, String} = nothing, 
     Jreg = false,
+    parallel = false,
     verbose = true)
 
-    LL = var.H*var.N*var.N + var.H*var.q2
+    LL = if parallel 
+        var.H*var.N*var.N + var.H*var.q2*var.N
+    else
+        var.H*var.N*var.N + var.H*var.q2
+    end
     x0 = if initx0 === nothing 
         rand(Float64, LL)*0.001
     else 
@@ -68,7 +81,8 @@ function attentionMinimizePL(alg::PlmAlg, var::PlmVar;
     else
         nothing
     end
-    Jreg == false && min_objective!(opt, (x, g) -> optimfunwrapper(x, g, var, file, dist=dist, verbose=verbose))
+    parallel == false && min_objective!(opt, (x, g) -> optimfunwrapper(x, g, var, file, dist=dist, verbose=verbose))
+    parallel && min_objective!(opt, (x, g) -> paralleloptimfunwrapper(x, g, var, file, dist=dist, verbose=verbose))
     # Jreg == true && min_objective!(opt, (x, g) -> optimfunwrapperJreg(x, g, var, dist, file))
     elapstime = @elapsed  (minf, minx, ret) = optimize(opt, x0)
     alg.verbose && @printf("pl = %.4f\t time = %.4f\t", minf, elapstime)

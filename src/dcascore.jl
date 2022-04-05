@@ -56,6 +56,26 @@ function compute_dcascore(W, V; min_separation::Int=1)
     return compute_ranking(FNapc, min_separation)
 end
 
+function parallel_compute_dcascore(W, V; min_separation::Int=1)
+    
+    H,L,L = size(W)
+    H,q,q,N = size(V)
+    Wsf_site = softmax(W, dims=2)
+    @tullio Jtens[a, b, r, i] := Wsf_site[h, i, r] * V[h, a, b, r] * (i != r)
+
+    Jt = 0.5 * (Jtens + permutedims(Jtens,[2,1,4,3]))
+
+    # Jmat = reshape(permutedims(Jtens,[1,4,2,3]),L*q,L*q)
+
+    # Jmatsym = (Jmat .+ Jmat') ./ 2
+    #Jt = permutedims(reshape(Jtenssymm, q, L, q, L), [1, 3, 4, 2]) 
+    ht = zeros(eltype(Jt), q, L)
+    Jzsg, _ = gauge(Jt, ht, ZeroSumGauge())
+    FN = compute_fn(Jzsg)
+    FNapc = correct_APC(FN)
+    return compute_ranking(FNapc, min_separation)
+end
+
 function compute_fn(J::AbstractArray{T,4}) where {T<:AbstractFloat}
     q, q, L, L = size(J)
     fn = zeros(T, L, L)
