@@ -20,24 +20,23 @@ function parallel_pl_and_grad!(grad, x, plmvar::PlmVar, file; dist = nothing, ve
 
     pseudologlikelihood = zeros(Float64, N)
     grad .= 0.0
-
+    
     Threads.@threads for site = 1:N #l'upgrade è fatto male non so perchè
         pseudologlikelihood[site] = parallel_update_gradW_site!(grad,Z,W,V,site,weights,lambda)
     end
-
+    
     Threads.@threads for site = 1:N #l'upgrade è fatto male non so perchè
         parallel_update_gradV_site!(grad,Z,W,V,site,weights,lambda)
     end
-
+    
     L2 = lambda*L2Tensor(W) + lambda*L2Tensor(V)
     total_loglike = sum(pseudologlikelihood)
-
+    
     if dist !== nothing 
-        score = compute_dcascore(W,V)
+        score = parallel_compute_dcascore(W,V)
         roc = compute_referencescore(score, dist)
         rocN = roc[N][end]
         rocN5 = roc[div(N,5)][end]
-
         file !== nothing && write(file, "$total_loglike   "*"$L2   "*"$rocN5   "*"$rocN"*"\n")
         verbose && println("$total_loglike   "*"$L2   "*"$rocN5   "*"$rocN")
     else
