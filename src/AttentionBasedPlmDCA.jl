@@ -14,5 +14,4 @@ include("utils.jl")
 include("attention_plmdca.jl")
 include("dcascore.jl")
 include("gradient_test.jl")
-include("total_parallel.jl")
 end

@@ -56,8 +56,7 @@ function attentionMinimizePL(alg::PlmAlg, var::PlmVar;
     Jreg = false,
     parallel = false,
     verbose = true)
-
-    LL = if parallel 
+    LL = if parallel
         var.H*var.N*var.N + var.H*var.q2*var.N
     else
         var.H*var.N*var.N + var.H*var.q2
@@ -69,7 +68,7 @@ function attentionMinimizePL(alg::PlmAlg, var::PlmVar;
     end
     pl = 0.0
     attention_parameters = zeros(LL)
-    
+ 
     opt = Opt(alg.method, length(x0))
     ftol_abs!(opt, alg.epsconv)
     xtol_rel!(opt, alg.epsconv)
@@ -81,8 +80,8 @@ function attentionMinimizePL(alg::PlmAlg, var::PlmVar;
     else
         nothing
     end
-    parallel == false && min_objective!(opt, (x, g) -> optimfunwrapper(x, g, var, file, dist=dist, verbose=verbose))
-    parallel && min_objective!(opt, (x, g) -> paralleloptimfunwrapper(x, g, var, file, dist=dist, verbose=verbose))
+    min_objective!(opt, (x, g) -> optimfunwrapper(x, g, var, file, dist=dist, verbose=verbose, parallel=parallel))
+    # parallel && min_objective!(opt, (x, g) -> paralleloptimfunwrapper(x, g, var, file, dist=dist, verbose=verbose))
     # Jreg == true && min_objective!(opt, (x, g) -> optimfunwrapperJreg(x, g, var, dist, file))
     elapstime = @elapsed  (minf, minx, ret) = optimize(opt, x0)
     alg.verbose && @printf("pl = %.4f\t time = %.4f\t", minf, elapstime)
@@ -96,7 +95,7 @@ function attentionMinimizePL(alg::PlmAlg, var::PlmVar;
 end
 
 
-function pl_and_grad!(grad, x, plmvar::PlmVar, file; dist = nothing, verbose = true)
+function pl_and_grad!(grad, x, plmvar::PlmVar, file; dist = nothing, verbose = true, parallel = false)
     pg = pointer(grad)
     N = plmvar.N
     M = plmvar.M 
@@ -106,30 +105,52 @@ function pl_and_grad!(grad, x, plmvar::PlmVar, file; dist = nothing, verbose = t
     lambda = plmvar.lambda
     weights = plmvar.W
     Z = plmvar.Z
-    
+   
 
-    L = H*N*N + H*q2
+    L = if parallel  
+        H*N*N + H*q2*N
+    else
+        H*N*N + H*q2
+    end
+
+     
 
     L == length(x) || error("Wrong dimension of parameter vector")
     L == length(grad) || error("Wrong dimension of gradient vector")
-
-    W = reshape(x[1:H*N*N],H,N,N)
-    V = reshape(x[H*N*N+1:end],H,q,q)
-
-    pseudologlikelihood = zeros(Float64, N)
-    grad .= 0.0
-
-    Threads.@threads for site = 1:N #l'upgrade è fatto male non so perchè
-        pseudologlikelihood[site] = update_gradW_site!(grad,Z,W,V,site,weights,lambda)
-    end
-
-    update_gradV!(grad,Z,W,V,weights,lambda)
     
-    L2 = lambda*L2Tensor(W) + lambda*L2Tensor(V)
-    total_loglike = sum(pseudologlikelihood)
+    if parallel
+    
+        W = reshape(x[1:H*N*N],H,N,N)
+        V = reshape(x[H*N*N+1:end],H,q,q,N)
+        pseudologlikelihood = zeros(Float64, N)
+        grad .= 0.0
+        Threads.@threads for site = 1:N 
+            pseudologlikelihood[site] = parallel_update_grad_site!(grad,Z,W,V,site,weights,lambda)
+        end
+        L2 = lambda*L2Tensor(W) + lambda*L2Tensor(V)
+        total_loglike = sum(pseudologlikelihood) 
+    else 
+        W = reshape(x[1:H*N*N],H,N,N)
+        V = reshape(x[H*N*N+1:end],H,q,q)
 
+        pseudologlikelihood = zeros(Float64, N)
+        grad .= 0.0
+
+        Threads.@threads for site = 1:N #l'upgrade è fatto male non so perchè
+            pseudologlikelihood[site] = update_gradW_site!(grad,Z,W,V,site,weights,lambda)
+        end
+
+        update_gradV!(grad,Z,W,V,weights,lambda)
+        
+        L2 = lambda*L2Tensor(W) + lambda*L2Tensor(V)
+        total_loglike = sum(pseudologlikelihood)
+    end
     if dist !== nothing 
-        score = compute_dcascore(W,V)
+        score = if parallel 
+            parallel_compute_dcascore(W,V)
+        else
+            compute_dcascore(W,V)
+        end
         roc = compute_referencescore(score, dist)
         rocN = roc[N][end]
         rocN5 = roc[div(N,5)][end]
@@ -231,6 +252,70 @@ function update_gradV!(grad,Z,W,V,weights,lambda)
 
     return 
 end
+
+function parallel_update_grad_site!(grad,Z,W,V,site,weights,lambda)
+    pg = pointer(grad)
+
+
+    H,q,q,N = size(V)
+
+    L = H*N*N+H*q*q*N
+
+    W_site = view(W,:,:,site)
+    V_site = view(V,:,:,:,site)
+    Wsf_site = softmax(W_site,dims=2)
+    @tullio threads=true fastmath=true avx=true grad=false J[a,b,j] := Wsf_site[h,j]*V_site[h,a,b]*(site!=j)
+
+    @tullio threads=true fastmath=true avx=true grad=false mat_ene[a,m] := J[a,Z[j,m],j]
+
+    pl = 0.0
+    partition = sumexp(mat_ene,dims=1)
+    @tullio threads=true fastmath=true avx=true grad=false prob[a,m] := exp(mat_ene[a,m])/partition[m]
+    lge = log.(partition)
+    Z_site = view(Z,site,:)
+    @tullio threads=true fastmath=true avx=true grad=false pl = weights[m]*(mat_ene[Z_site[m],m] - lge[m])
+    pl *= -1
+
+
+    
+
+    @tullio threads=true fastmath=true avx=true grad=false mat[j,a,b] := weights[m]*(Z[j,m]==b)*((Z_site[m]==a)-prob[a,m]) (a in 1:q, b in 1:q)
+    mat[site,:,:] .= 0.0
+    @tullio threads=true fastmath=true avx=true grad=false fact[j,h] := mat[j,a,b]*V_site[h,a,b]
+
+    grad[(site-1)*N*H+1:site*N*H] .= 0.0
+    @inbounds for counter in (site-1)*N*H+1:site*N*H 
+        h,i,r = counter_to_index(counter,N,q,H)
+        if r == site 
+            @simd for j = 1:N 
+                grad[counter] += fact[j,h]*((i==j)*Wsf_site[h,i]-Wsf_site[h,i]*Wsf_site[h,j]) 
+            end
+            grad[counter] *= -1
+        end
+        grad[counter] += 2*lambda*W[h,i,r]
+    end
+
+
+    grad[(site-1)*H*q*q+H*N*N+1:site*H*q*q+H*N*N] .= 0.0
+    @inbounds for counter = (site-1)*H*q*q+H*N*N+1:site*H*q*q+H*N*N 
+        h,c,d,i = counter_to_index_V_parallel(counter,N,q,H)
+        if i==site
+            mat_cd = view(mat,:,c,d)
+            Wsf_h = view(Wsf_site,h,:)
+            # @tullio threads=true fastmath=true avx=true grad=false g = mat_cd[j]*Wsf_h[j]
+
+            grad[counter] = dot(mat_cd,Wsf_h)
+            grad[counter] *= -1 
+            grad[counter] += 2*lambda*V[h,c,d,i]
+        end
+    end 
+
+    pg == pointer(grad) || error("Different pointer")
+    return pl
+
+
+end
+
 
 # function pl_and_grad_Jreg!(grad,x,plmvar, dist, file)
     

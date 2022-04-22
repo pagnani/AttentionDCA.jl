@@ -1,12 +1,8 @@
-function optimfunwrapper(x::Vector, g::Vector, var, file; dist=nothing, verbose=true)
+function optimfunwrapper(x::Vector, g::Vector, var, file; kwds...)
     g === nothing && (g = zeros(Float64, length(x)))
-    return pl_and_grad!(g, x,  var, file; dist = dist, verbose=verbose)
+    return pl_and_grad!(g, x,  var, file; kwds...)
 end
 
-function paralleloptimfunwrapper(x::Vector, g::Vector, var, file; dist=nothing, verbose=true)
-    g === nothing && (g = zeros(Float64, length(x)))
-    return parallel_pl_and_grad!(g, x,  var, file; dist = dist, verbose=verbose)
-end
 
 # function optimfunwrapperJreg(x::Vector, g::Vector, var, dist, file)
 #     g === nothing && (g = zeros(Float64, length(x)))
@@ -31,6 +27,19 @@ function counter_to_index(l::Int, N::Int, Q::Int, H::Int; verbose::Bool=false)
             verbose && println("h = $h \na = $a \nb = $b \n")
             return h, a, b
     end
+end
+
+function counter_to_index_V_parallel(l::Int, N::Int, Q::Int, H::Int; verbose::Bool=false)
+    l > H*N*N || error("Counter value too small")
+    l -=H*N*N 
+    i::Int = ceil(l/(H*Q*Q))
+    l-=(H*Q*Q)*(i-1)
+    b::Int = ceil(l/(Q*H))
+    l-=(Q*H)*(b-1)
+    a::Int = ceil(l/H)
+    h = l-H*(a-1)
+    verbose && println("h = $h \na = $a \nb = $b \ni = $i \n")
+    return h, a, b, i
 end
 
 function logsumexp(a::AbstractArray{<:Real}; dims=1)
