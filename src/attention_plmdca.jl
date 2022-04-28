@@ -119,13 +119,12 @@ function pl_and_grad!(grad, x, plmvar::PlmVar, file; dist = nothing, verbose = t
     L == length(grad) || error("Wrong dimension of gradient vector")
     
     if parallel
-    
         W = reshape(x[1:H*N*N],H,N,N)
         V = reshape(x[H*N*N+1:end],H,q,q,N)
         pseudologlikelihood = zeros(Float64, N)
         grad .= 0.0
         Threads.@threads for site = 1:N 
-            pseudologlikelihood[site] = parallel_update_grad_site!(grad,Z,W,V,site,weights,lambda)
+                pseudologlikelihood[site] = parallel_update_grad_site!(grad,Z,W,V,site,weights,lambda)
         end
         L2 = lambda*L2Tensor(W) + lambda*L2Tensor(V)
         total_loglike = sum(pseudologlikelihood) 
@@ -135,13 +134,17 @@ function pl_and_grad!(grad, x, plmvar::PlmVar, file; dist = nothing, verbose = t
 
         pseudologlikelihood = zeros(Float64, N)
         grad .= 0.0
-
+        
+        W_sf = zeros(Float64,H,N,N)
+        # prob = zeros(Float64,q,M,N)
+        mat = zeros(Float64,N,N,q,q)
         Threads.@threads for site = 1:N #l'upgrade è fatto male non so perchè
-            pseudologlikelihood[site] = update_gradW_site!(grad,Z,W,V,site,weights,lambda)
+            pseudologlikelihood[site],mat[site,:,:,:],W_sf[:,:,site] = update_gradW_site!(grad,Z,W,V,site,weights,lambda)
         end
 
-        update_gradV!(grad,Z,W,V,weights,lambda)
+        update_gradV!(grad,Z,W_sf,V,weights,lambda,mat)
         
+
         L2 = lambda*L2Tensor(W) + lambda*L2Tensor(V)
         total_loglike = sum(pseudologlikelihood)
     end
@@ -164,7 +167,6 @@ function pl_and_grad!(grad, x, plmvar::PlmVar, file; dist = nothing, verbose = t
     
     pg == pointer(grad) || error("Different pointer")
     return total_loglike + L2
-
 end
 
 function update_gradW_site!(grad,Z,W,V,site,weights,lambda)
@@ -177,6 +179,8 @@ function update_gradW_site!(grad,Z,W,V,site,weights,lambda)
     
     W_site = view(W,:,:,site)
     Wsf_site = softmax(W_site,dims=2)
+    
+
     @tullio threads=true fastmath=true avx=true grad=false J[a,b,j] := Wsf_site[h,j]*V[h,a,b]*(site!=j)
     
     @tullio threads=true fastmath=true avx=true grad=false mat_ene[a,m] := J[a,Z[j,m],j]
@@ -208,12 +212,12 @@ function update_gradW_site!(grad,Z,W,V,site,weights,lambda)
     end
 
     pg == pointer(grad) || error("Different pointer")
-
-    return pl
+    #
+    return pl, mat, Wsf_site
+    #
 end
 
-
-function update_gradV!(grad,Z,W,V,weights,lambda)
+function update_gradV!(grad,Z,Wsf,V,weights,lambda,mat)
     pg = pointer(grad)
 
     N,_ = size(Z)
@@ -223,17 +227,17 @@ function update_gradV!(grad,Z,W,V,weights,lambda)
 
     grad[H*N*N+1:end] .= 0.0
 
-    Wsf = softmax(W,dims=2) #Ws[h,i,site]
-    @tullio threads=true fastmath=true avx=true grad=false J[a,b,j,site] := Wsf[h,j,site]*V[h,a,b]*(site!=j)
+    # Wsf = softmax(W,dims=2) #Ws[h,i,site]
+    # @tullio threads=true fastmath=true avx=true grad=false J[a,b,j,site] := Wsf[h,j,site]*V[h,a,b]*(site!=j)
 
-    @tullio threads=true fastmath=true avx=true grad=false mat_ene[a,m,site] := J[a,Z[j,m],j,site]
+    # @tullio threads=true fastmath=true avx=true grad=false mat_ene[a,m,site] := J[a,Z[j,m],j,site]
 
-    partition = sumexp(mat_ene,dims=1)
-    part = view(partition,1,:,:)
-    @tullio threads=true fastmath=true avx=true grad=false prob[a,m,site] := exp(mat_ene[a,m,site])/part[m,site]
+    # partition = sumexp(mat_ene,dims=1)
+    # part = view(partition,1,:,:)
+    # @tullio threads=true fastmath=true avx=true grad=false prob[a,m,site] := exp(mat_ene[a,m,site])/part[m,site]
     
-    @tullio threads=true fastmath=true avx=true grad=false mat[site,j,a,b] := weights[m]*(Z[j,m]==b)*((Z[site,m]==a)-prob[a,m,site])*(site!=j) (a in 1:q, b in 1:q)
-    # mat[site,:,:] .= 0.0
+    # @tullio threads=true fastmath=true avx=true grad=false mat[site,j,a,b] := weights[m]*(Z[j,m]==b)*((Z[site,m]==a)-prob[a,m,site])*(site!=j) (a in 1:q, b in 1:q)
+    
 
 
     @inbounds for counter = H*N*N+1:L 
@@ -255,7 +259,7 @@ end
 
 function parallel_update_grad_site!(grad,Z,W,V,site,weights,lambda)
     pg = pointer(grad)
-
+    
 
     H,q,q,N = size(V)
 
