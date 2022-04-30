@@ -8,17 +8,16 @@ end
 struct PlmOut
     pslike::Union{Vector{Float64},Float64}
     Wtensor::Array{Float64,3}
-    Vtensor::Array{Float64,3}
+    Vtensor::Union{Array{Float64,3},Array{Float64,4}}
     score::Array{Tuple{Int, Int, Float64},1}  
 end
 
-
-struct PlmOutParallel
-    pslike::Union{Vector{Float64},Float64}
-    Wtensor::Array{Float64,3}
-    Vtensor::Array{Float64,4}
-    score::Array{Tuple{Int, Int, Float64},1}  
-end
+# struct PlmOutParallel
+#     pslike::Union{Vector{Float64},Float64}
+#     Wtensor::Array{Float64,3}
+#     Vtensor::Array{Float64,4}
+#     score::Array{Tuple{Int, Int, Float64},1}  
+# end
 
 struct PlmVar
     N::Int

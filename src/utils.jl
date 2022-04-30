@@ -2,12 +2,11 @@ function optimfunwrapper(x::Vector, g::Vector, var, file; kwds...)
     g === nothing && (g = zeros(Float64, length(x)))
     return pl_and_grad!(g, x,  var, file; kwds...)
 end
+function optimfunwrapperJreg(g::Vector,x, var, file; kwds...)
+    g === nothing && (g = zeros(Float64, length(x)))
+    return pl_and_grad_Jreg!(g, x, var, file; kwds...)
+end
 
-
-# function optimfunwrapperJreg(x::Vector, g::Vector, var, dist, file)
-#     g === nothing && (g = zeros(Float64, length(x)))
-#     return pl_and_grad_jreg!(g, x, var, dist, file)
-# end
 
 function counter_to_index(l::Int, N::Int, Q::Int, H::Int; verbose::Bool=false)
     h::Int = 0
