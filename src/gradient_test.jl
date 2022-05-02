@@ -33,9 +33,9 @@ function total_loglike(Z::Matrix{T},W,V,lambda,weights) where T<:Integer
     return pseudologlikelihood
 end
 
-function total_loglikeJreg(Z::Matrix{T},W,V,lambda,weights) where T<:Integer
-    M = size(Z,2)
-    sumweights = sum(weights)
+function total_loglikeJreg(Z::Matrix{T},W,V,lambda,weights;q=21) where T<:Integer
+    N,_ = size(Z)
+    
     Wsf_site = softmax(W,dims=2)
     @tullio J[a,b,i,r] := Wsf_site[h,i,r]*V[h,a,b]*(i!=r)
     
@@ -43,9 +43,9 @@ function total_loglikeJreg(Z::Matrix{T},W,V,lambda,weights) where T<:Integer
     
     lge = logsumexp(mat_ene,dims=1)[1,:,:]
     @tullio pseudologlikelihood = weights[m]*(mat_ene[Z[r,m],r,m] - lge[r,m])
-    pseudologlikelihood /= -sumweights
+    pseudologlikelihood /= -1
     
-    pseudologlikelihood += lambda*L2Tensor(J) 
+    pseudologlikelihood += N*q*lambda*L2Tensor(J) 
 
     return pseudologlikelihood
 end

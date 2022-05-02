@@ -1,9 +1,10 @@
-function attention_plmdca(Z::Array{T,2},Weights::Vector{Float64}, H::Int;
+function attention_plmdca(Z::Array{T,2},Weights::Vector{Float64};
+                H::Int = 32,
                 structfile::Union{String,Nothing} = nothing, 
                 output::Union{String,Nothing} = nothing,
                 parallel = false,
                 Jreg = false,
-                min_separation::Int=1,
+                min_separation::Int=6,
                 theta=:auto,
                 lambda::Real=0.00005,
                 epsconv::Real=1.0e-5,
@@ -35,17 +36,17 @@ function attention_plmdca(Z::Array{T,2},Weights::Vector{Float64}, H::Int;
     return PlmOut(pslike, W, V, score)
 end
 
-function attention_plmdca(filename::String,H;
+function attention_plmdca(filename::String;
                 theta::Union{Symbol,Real}=:auto,
                 max_gap_fraction::Real=0.9,
                 remove_dups::Bool=true,
                 kwds...)
     time = @elapsed Weights, Z, N, M, q = ReadFasta(filename, max_gap_fraction, theta, remove_dups)
     println("preprocessing took $time seconds")
-    attention_plmdca(Z, Weights, H; kwds...)
+    attention_plmdca(Z, Weights; kwds...)
 end
 
-plmdca(filename::String, H::Int; kwds...) = attention_plmdca(filename, H; kwds...)
+# plmdca(filename::String, H::Int; kwds...) = attention_plmdca(filename, H; kwds...)
 
 function attentionMinimizePL(alg::PlmAlg, var::PlmVar; 
                 initx0 = nothing, 
@@ -138,10 +139,13 @@ function pl_and_grad!(grad, x, plmvar::PlmVar, file; dist = nothing, verbose = t
         W_sf = zeros(Float64,H,N,N)
         # prob = zeros(Float64,q,M,N)
         mat = zeros(Float64,N,N,q,q)
-        Threads.@threads for site = 1:N #l'upgrade è fatto male non so perchè
-            pseudologlikelihood[site],mat[site,:,:,:],W_sf[:,:,site] = update_gradW_site!(grad,Z,W,V,site,weights,lambda)
+        @time begin Threads.@threads for site = 1:N #l'upgrade è fatto male non so perchè
+                pseudologlikelihood[site],mat[site,:,:,:],W_sf[:,:,site] = update_gradW_site!(grad,Z,W,V,site,weights,lambda)
+            end
         end
-        update_gradV!(grad,Z,W_sf,V,lambda,mat)
+        @time begin
+            update_gradV!(grad,Z,W_sf,V,lambda,mat)
+        end
         L2 = lambda*L2Tensor(W) + lambda*L2Tensor(V)
         total_loglike = sum(pseudologlikelihood)
     end
@@ -321,9 +325,10 @@ end
 function pl_and_grad_Jreg!(grad, x, plmvar, file; dist = nothing, verbose = true)
     pg = pointer(grad)
     H = plmvar.H 
+    N = plmvar.N
     q = plmvar.q
     Z = plmvar.Z
-    lambda = plmvar.lambda
+    lambda = N*q*plmvar.lambda
     N,M = size(Z)
     weights = plmvar.W
     
@@ -347,8 +352,8 @@ function pl_and_grad_Jreg!(grad, x, plmvar, file; dist = nothing, verbose = true
     Threads.@threads for site = 1:N
         pseudologlikelihood[site],l2[site],J[:,:,:,site],Wsf[:,:,site],mat[site,:,:,:] = update_gradW_site_Jreg!(grad,Z,W,V,weights,lambda,site)
     end
-
-
+    
+    
     update_gradV_Jreg!(grad,Z,Wsf,V,lambda,J,mat)
     
 
@@ -380,13 +385,16 @@ function update_gradW_site_Jreg!(grad,Z,W,V,weights,lambda,site)
 
     W_site = view(W,:,:,site)
     Wsf_site = softmax(W_site,dims=2)
-    @tullio J[a,b,j] := Wsf_site[h,j]*V[h,a,b]*(site!=j)
     
+    
+    @tullio J[a,b,j] := Wsf_site[h,j]*V[h,a,b]*(site!=j)
     @tullio mat_ene[a,m] := J[a,Z[j,m],j]
-
+    
+    
     pl = 0.0
     partition = sumexp(mat_ene,dims=1)
     @tullio prob[a,m] := exp(mat_ene[a,m])/partition[m]
+    
     lge = log.(partition)
     Z_site = view(Z,site,:)
     @tullio pl = weights[m]*(mat_ene[Z_site[m],m] - lge[m])

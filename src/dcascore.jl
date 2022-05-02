@@ -12,7 +12,7 @@ function compute_residue_pair_dist(filedist::String)
     return Dict((round(Int,d[i,1]),round(Int,d[i,2])) => d[i,4] for i in 1:size(d,1) if d[i,4] != 0)
 end
 
-function compute_referencescore(score,dist::Dict; mindist::Int=4, cutoff::Number=8.0)
+function compute_referencescore(score,dist::Dict; mindist::Int=6, cutoff::Number=8.0)
     nc2 = length(score)
     #nc2 == size(d,1) || throw(DimensionMismatch("incompatible length $nc2 $(size(d,1))"))
     out = Tuple{Int,Int,Float64,Float64}[]
@@ -115,12 +115,12 @@ function compute_ranking(S::Matrix{Float64}, min_separation::Int = 5)
 end
 
 
-function compute_actualroc(filestruct)
+function compute_actualroc(filestruct;cutoff=8.0)
     distances=sort(readdlm(filestruct)[:,4])
     L = length(distances)
     l = 0
     for i in 1:L
-        if distances[i]>8.0
+        if distances[i]>cutoff
             l = i 
             break 
         end
