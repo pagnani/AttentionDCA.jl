@@ -25,7 +25,7 @@ function compute_referencescore(score,dist::Dict; mindist::Int=4, cutoff::Number
         else
            continue
         end
-        if sitej - sitei > mindist
+        if sitej - sitei > mindist && dij != 0
             ctrtot += 1
             if dij < cutoff
                 ctr += 1
