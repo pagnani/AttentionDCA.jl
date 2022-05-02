@@ -9,7 +9,7 @@ end
 
 function compute_residue_pair_dist(filedist::String)
     d = readdlm(filedist)
-    return Dict((round(Int,d[i,1]),round(Int,d[i,2])) => d[i,4] for i in 1:size(d,1))
+    return Dict((round(Int,d[i,1]),round(Int,d[i,2])) => d[i,4] for i in 1:size(d,1) if d[i,4] != 0)
 end
 
 function compute_referencescore(score,dist::Dict; mindist::Int=4, cutoff::Number=8.0)
@@ -25,7 +25,7 @@ function compute_referencescore(score,dist::Dict; mindist::Int=4, cutoff::Number
         else
            continue
         end
-        if sitej - sitei > mindist && dij != 0
+        if sitej - sitei > mindist 
             ctrtot += 1
             if dij < cutoff
                 ctr += 1
