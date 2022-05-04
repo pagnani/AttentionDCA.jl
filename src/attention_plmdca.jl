@@ -4,6 +4,7 @@ function attention_plmdca(Z::Array{T,2},Weights::Vector{Float64};
                 output::Union{String,Nothing} = nothing,
                 parallel = false,
                 Jreg = false,
+                initx0 = nothing,
                 min_separation::Int=6,
                 theta=:auto,
                 lambda::Real=0.00005,
@@ -24,7 +25,7 @@ function attention_plmdca(Z::Array{T,2},Weights::Vector{Float64};
     else
         nothing 
     end
-    parameters, pslike = attentionMinimizePL(plmalg, plmvar, dist=dist, output=output,verbose=verbose,parallel=parallel,Jreg=Jreg)
+    parameters, pslike = attentionMinimizePL(plmalg, plmvar, dist=dist, output=output,verbose=verbose,parallel=parallel,Jreg=Jreg, initx0=initx0)
     W = reshape(parameters[1:H*N*N],H,N,N)
     if parallel 
         V = reshape(parameters[H*N*N+1:end],H,q,q,N)
@@ -48,7 +49,7 @@ end
 
 # plmdca(filename::String, H::Int; kwds...) = attention_plmdca(filename, H; kwds...)
 
-function attentionMinimizePL(alg::PlmAlg, var::PlmVar; 
+function attentionMinimizePL(alg::PlmAlg, var::PlmVar;
                 initx0 = nothing, 
                 dist = nothing, 
                 output::Union{Nothing, String} = nothing, 
@@ -139,13 +140,13 @@ function pl_and_grad!(grad, x, plmvar::PlmVar, file; dist = nothing, verbose = t
         W_sf = zeros(Float64,H,N,N)
         # prob = zeros(Float64,q,M,N)
         mat = zeros(Float64,N,N,q,q)
-        @time begin Threads.@threads for site = 1:N #l'upgrade è fatto male non so perchè
-                pseudologlikelihood[site],mat[site,:,:,:],W_sf[:,:,site] = update_gradW_site!(grad,Z,W,V,site,weights,lambda)
-            end
+        Threads.@threads for site = 1:N #l'upgrade è fatto male non so perchè
+            pseudologlikelihood[site],mat[site,:,:,:],W_sf[:,:,site] = update_gradW_site!(grad,Z,W,V,site,weights,lambda)
         end
-        @time begin
-            update_gradV!(grad,Z,W_sf,V,lambda,mat)
-        end
+        
+        
+        update_gradV!(grad,Z,W_sf,V,lambda,mat)
+        
         L2 = lambda*L2Tensor(W) + lambda*L2Tensor(V)
         total_loglike = sum(pseudologlikelihood)
     end
@@ -163,7 +164,7 @@ function pl_and_grad!(grad, x, plmvar::PlmVar, file; dist = nothing, verbose = t
         verbose && println("$total_loglike   "*"$L2   "*"$rocN5   "*"$rocN")
     else
         file !== nothing && write(file, "$total_loglike   "*"$L2"*"\n")
-        verbose && println("$total_loglike   "*"$L2")
+        verbose && println("$total_loglike   "*"$L2 ")
     end
     
     pg == pointer(grad) || error("Different pointer")
@@ -326,15 +327,15 @@ function pl_and_grad_Jreg!(grad, x, plmvar, file; dist = nothing, verbose = true
     pg = pointer(grad)
     H = plmvar.H 
     N = plmvar.N
+    M = plmvar.M
     q = plmvar.q
     Z = plmvar.Z
-    lambda = N*q*plmvar.lambda
+    λ = N*q*(plmvar.lambda)/M
     N,M = size(Z)
     weights = plmvar.W
     
 
     L = H*N*N + H*q*q 
-
     L == length(x) || error("Wrong dimension of parameter vector")
     L == length(grad) || error("Wrong dimension of gradient vector")
 
@@ -348,14 +349,13 @@ function pl_and_grad_Jreg!(grad, x, plmvar, file; dist = nothing, verbose = true
     J = zeros(Float64,q,q,N,N)
     Wsf = zeros(Float64,H,N,N)
     mat = zeros(Float64,N,N,q,q)
-
+    
     Threads.@threads for site = 1:N
-        pseudologlikelihood[site],l2[site],J[:,:,:,site],Wsf[:,:,site],mat[site,:,:,:] = update_gradW_site_Jreg!(grad,Z,W,V,weights,lambda,site)
+        pseudologlikelihood[site],l2[site],J[:,:,:,site],Wsf[:,:,site],mat[site,:,:,:] = update_gradW_site_Jreg!(grad,Z,W,V,weights,λ,site)
     end
     
     
-    update_gradV_Jreg!(grad,Z,Wsf,V,lambda,J,mat)
-    
+    update_gradV_Jreg!(grad,Z,Wsf,V,λ,J,mat)
 
     pg == pointer(grad) || error("Different pointer")
     
@@ -371,13 +371,13 @@ function pl_and_grad_Jreg!(grad, x, plmvar, file; dist = nothing, verbose = true
         verbose && println("$total_loglike   "*"$L2   "*"$rocN5   "*"$rocN")
     else
         file !== nothing && write(file, "$total_loglike   "*"$L2"*"\n")
-        verbose && println("$total_loglike   "*"$L2")
+        verbose && println("$total_loglike   "*"$L2 ")
     end
     return total_loglike + L2
 
 end
 
-function update_gradW_site_Jreg!(grad,Z,W,V,weights,lambda,site)
+function update_gradW_site_Jreg!(grad,Z,W,V,weights,λ,site)
     
     pg = pointer(grad)
     N,_ = size(Z)
@@ -419,16 +419,16 @@ function update_gradW_site_Jreg!(grad,Z,W,V,weights,lambda,site)
             end
         end
         grad[counter] *= -1
-        grad[counter] += lambda*gradL2
+        grad[counter] += λ*gradL2
 
     end
 
     pg == pointer(grad) || error("Different pointer")
-    return pl, lambda*L2Tensor(J), J, Wsf_site , mat
+    return pl, λ*L2Tensor(J), J, Wsf_site , mat
 end
 
 
-function update_gradV_Jreg!(grad,Z,Wsf,V,lambda,J,mat)
+function update_gradV_Jreg!(grad,Z,Wsf,V,λ,J,mat)
     pg = pointer(grad)
 
     N,_ = size(Z)
@@ -449,7 +449,7 @@ function update_gradV_Jreg!(grad,Z,Wsf,V,lambda,J,mat)
         @tullio L2 = J_cd[y,x]*Wsf_h[y,x]        
         
         grad[counter] *= -1     
-        grad[counter] += 2*lambda*L2
+        grad[counter] += 2*λ*L2
     end 
 
     pg == pointer(grad) || error("Different pointer")

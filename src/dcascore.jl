@@ -36,7 +36,7 @@ function compute_referencescore(score,dist::Dict; mindist::Int=6, cutoff::Number
     out
 end
 
-function compute_dcascore(W, V; min_separation::Int=1)
+function compute_dcascore(W, V; min_separation::Int=6)
     
     H,L,L = size(W)
     H,q,q = size(V)
@@ -56,7 +56,7 @@ function compute_dcascore(W, V; min_separation::Int=1)
     return compute_ranking(FNapc, min_separation)
 end
 
-function parallel_compute_dcascore(W, V; min_separation::Int=1)
+function parallel_compute_dcascore(W, V; min_separation::Int=6)
     
     H,L,L = size(W)
     H,q,q,N = size(V)
@@ -88,7 +88,7 @@ function compute_fn(J::AbstractArray{T,4}) where {T<:AbstractFloat}
             fn[i, j] = s
         end
     end
-    return fn
+    # return fn
     return (fn + fn') * T(0.5)
 end
 
@@ -101,7 +101,7 @@ function correct_APC(S::Matrix)
     return S
 end
 
-function compute_ranking(S::Matrix{Float64}, min_separation::Int = 5)
+function compute_ranking(S::Matrix{Float64}, min_separation::Int = 6)
     N = size(S, 1)
     R = Array{Tuple{Int,Int,Float64}}(undef, div((N-min_separation)*(N-min_separation+1), 2))
     counter = 0
