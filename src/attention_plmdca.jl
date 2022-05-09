@@ -62,7 +62,7 @@ function attentionMinimizePL(alg::PlmAlg, var::PlmVar;
         var.H*var.N*var.N + var.H*var.q2
     end
     x0 = if initx0 === nothing 
-        rand(Float64, LL)*0.001
+        rand(Float64, LL)*0.0001
     else 
         initx0
     end
