@@ -1,10 +1,8 @@
-function pslikelihood(x, var::PlmVar)
+function pslikelihood(x, var::PlmVar,Z,weights,limits)
     N = var.N
     M = var.M
     H = var.H
     q = var.q
-    Z = var.Z
-    weights = var.W
     λ = N*q*(var.lambda)/M
 
     L = H*N*N + H*q*q #total numbero of parameters
@@ -21,9 +19,10 @@ function pslikelihood(x, var::PlmVar)
     J = zeros(Float64,q,q,N,N)
     Wsf = zeros(Float64,H,N,N)
     mat = zeros(Float64,N,N,q,q)
-    
+
+
     Threads.@threads for site = 1:N
-        pseudologlikelihood[site],l2[site],J[:,:,:,site],Wsf[:,:,site],mat[site,:,:,:] = new_update_gradW_site_Jreg!(grad,Z,W,V,weights,λ,site)
+        pseudologlikelihood[site],l2[site],J[:,:,:,site],Wsf[:,:,site],mat[site,:,:,:] = new_update_gradW_site_Jreg!(grad,Z,W,V,weights,λ,site,limits)
     end
     
     
@@ -51,8 +50,7 @@ function pslikelihood(x, var::PlmVar)
     
 end
 
-function new_update_gradW_site_Jreg!(grad,Z,W,V,weights,λ,site)
-    
+function new_update_gradW_site_Jreg!(grad,Z,W,V,weights,λ,site,limits)
     pg = pointer(grad)
     N,_ = size(Z)
     H,q,_ = size(V)
@@ -77,7 +75,12 @@ function new_update_gradW_site_Jreg!(grad,Z,W,V,weights,λ,site)
 
     grad[(site-1)*N*H+1:site*N*H] .= 0.0
 
-    @tullio mat[j,a,b] := weights[m]*(Z[j,m]==b)*((Z_site[m]==a)-prob[a,m]) (a in 1:q, b in 1:q)
+    weights_minibatch = weights[limits]
+    Z_minibatch = view(Z,:,limits)
+    Z_site_minibatch = view(Z_site,limits)
+    prob_minibatch = view(prob,:,limits)
+
+    @tullio mat[j,a,b] := weights_minibatch[m]*(Z_minibatch[j,m]==b)*((Z_site_minibatch[m]==a)-prob_minibatch[a,m]) (a in 1:q, b in 1:q)
     mat[site,:,:] .= 0.0
     @tullio fact[j,h] := mat[j,a,b]*V[h,a,b]
     @tullio fact2[j,h] := 2*J[a,b,j]*V[h,a,b]
@@ -132,28 +135,54 @@ function new_update_gradV_Jreg!(grad,Z,Wsf,V,λ,J,mat)
 end
 
 
-using Flux
+using Flux, Random
 using Flux.Optimise: update!
 
-function my_minimiser(opt, x, var, x_epsconv, f_epsconv, maxit)
-    finitial,grad = pslikelihood(x,var)
+
+function my_minimiser(opt, x, var, Z, weights; x_epsconv=1.0e-5, f_epsconv=1.0e-5, maxit=1000, length_minibatches = 100)
+    M = length(weights)
+    perm = shuffle(1:M)
+    Z = Z[:,perm]
+    weights = weights[perm]
+    number_minibatches = M ÷ length_minibatches
+    j = 0
+    finitial,grad = pslikelihood(x,var,Z, weights, 1:length_minibatches)
     xinitial = copy(x)
     f1 = 0
     for i in 1:maxit 
-        update!(opt, x, grad)
-        f1,grad = pslikelihood(x,var)
+        j += 1 
+        if j != number_minibatches
+            update!(opt, x, grad)
+            f1,grad = pslikelihood(x,var,Z, weights, j*length_minibatches + 1 : (j+1)*length_minibatches)
         
-        if abs(f1 - finitial) <= f_epsconv 
-            println("Maxtol_f reached at ",abs(f1 - finitial))
-            return x, f1, "Maxtol_f reached", i
-        end  
+            if abs(f1 - finitial) <= f_epsconv 
+                println("Maxtol_f reached at ",abs(f1 - finitial))
+                return x, f1, "Maxtol_f reached", i
+            end  
 
-        if abs(maximum(xinitial-x)) <= x_epsconv
-            println("Maxtol_x reached at ",abs(maximum(xinitial-x)))
-            return x, f1, "Maxtol_x reached", i
+            if abs(maximum(xinitial-x)) <= x_epsconv
+                println("Maxtol_x reached at ",abs(maximum(xinitial-x)))
+                return x, f1, "Maxtol_x reached", i
+            end
+            finitial = copy(f1)
+            xinitial = copy(x)
+        else
+            update!(opt, x, grad)
+            f1,grad = pslikelihood(x,var,Z, weights,(number_minibatches-1)*length_minibatches+1:M)
+        
+            if abs(f1 - finitial) <= f_epsconv 
+                println("Maxtol_f reached at ",abs(f1 - finitial))
+                return x, f1, "Maxtol_f reached", i
+            end  
+
+            if abs(maximum(xinitial-x)) <= x_epsconv
+                println("Maxtol_x reached at ",abs(maximum(xinitial-x)))
+                return x, f1, "Maxtol_x reached", i
+            end
+            finitial = copy(f1)
+            xinitial = copy(x)
+            j = 0
         end
-        finitial = copy(f1)
-        xinitial = copy(x)
     end
 
     return x, f1, "Maxeval reached", maxit
