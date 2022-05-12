@@ -45,7 +45,7 @@ function pslikelihood(x, var::PlmVar,Z,weights,limits)
     #     file !== nothing && write(file, "$total_loglike   "*"$L2"*"\n")
     #     verbose && println("$total_loglike   "*"$L2 ")
     # end
-    println(total_loglike+L2)
+    println(total_loglike+L2,"  ", L2)
     return total_loglike + L2, grad 
     
 end
@@ -135,8 +135,8 @@ function new_update_gradV_Jreg!(grad,Z,Wsf,V,λ,J,mat)
 end
 
 
-using Flux, Random
-using Flux.Optimise: update!
+# using Flux, Random
+# using Flux.Optimise: update!
 
 
 function my_minimiser(opt, x, var, Z, weights; x_epsconv=1.0e-5, f_epsconv=1.0e-5, maxit=1000, length_minibatches = 100)
