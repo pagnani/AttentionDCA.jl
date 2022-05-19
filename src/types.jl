@@ -29,3 +29,25 @@ struct PlmVar
     Z::Array{Int,2} #MSA
     W::Array{Float64,1} #weigths
 end
+
+
+struct FAPlmVar
+    N::Int
+    M::Int
+    d::Int
+    q::Int  
+    q2::Int
+    H::Int
+    lambda::Float64
+    Z::Array{Int,2} #MSA
+    W::Array{Float64,1} #weigths
+end
+
+struct FAPlmOut
+    pslike::Union{Vector{Float64},Float64}
+    Qtensor::Array{Float64,3}
+    Ktensor::Array{Float64,3}
+    Vtensor::Array{Float64,3}
+    score::Array{Tuple{Int, Int, Float64},1}  
+    roc::Union{Vector{Float64},Nothing}
+end

@@ -7,6 +7,10 @@ function optimfunwrapperJreg(g::Vector,x, var, file; kwds...)
     return pl_and_grad_Jreg!(g, x, var, file; kwds...)
 end
 
+function optimfunwrapperfactored(g::Vector,x::Vector, var::FAPlmVar)
+    g === nothing && (g = zeros(Float64, length(x)))
+    return fa_pl_and_grad!(g, x, var)
+end
 
 function counter_to_index(l::Int, N::Int, Q::Int, H::Int; verbose::Bool=false)
     h::Int = 0

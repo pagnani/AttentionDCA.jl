@@ -66,3 +66,27 @@ function parallel_total_loglike(Z::Matrix{T},W,V,lambda,weights) where T<:Intege
 
     return pseudologlikelihood
 end
+
+
+function fa_total_pslikelihood(Z, Q, K, V, weights, lambda)
+    M = length(weights)
+    H,d,N = size(Q)
+    _,q,_ = size(V)
+    λ = q*N*lambda/M
+
+    @tullio W[h,i,j] := Q[h,d,i]*K[h,d,j]
+    sf = softmax(W,dims=3)
+    @tullio J[a,b,i,r] := sf[h,r,i]*V[h,a,b]*(i!=r)
+
+    @tullio mat_ene[a,r,m] := J[a,Z[j,m],j,r]
+    
+    lge = logsumexp(mat_ene,dims=1)[1,:,:]
+    @tullio pseudologlikelihood = weights[m]*(mat_ene[Z[r,m],r,m] - lge[r,m])
+    pseudologlikelihood /= -1
+
+    reg = λ*L2Tensor(J)
+    pseudologlikelihood += reg
+    println(pseudologlikelihood," ",reg)
+    return pseudologlikelihood
+   
+end

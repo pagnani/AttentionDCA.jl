@@ -1,4 +1,4 @@
-function pslikelihood(x, var::PlmVar,Z,weights,limits)
+function pslikelihood(x,var::PlmVar,Z,weights,limits)
     N = var.N
     M = var.M
     H = var.H
@@ -49,6 +49,8 @@ function pslikelihood(x, var::PlmVar,Z,weights,limits)
     return total_loglike + L2, grad 
     
 end
+
+
 
 function new_update_gradW_site_Jreg!(grad,Z,W,V,weights,λ,site,limits)
     pg = pointer(grad)
@@ -135,12 +137,11 @@ function new_update_gradV_Jreg!(grad,Z,Wsf,V,λ,J,mat)
 end
 
 
-# using Flux, Random
-# using Flux.Optimise: update!
 
-
-function my_minimiser(opt, x, var, Z, weights; x_epsconv=1.0e-5, f_epsconv=1.0e-5, maxit=1000, length_minibatches = 100)
-    M = length(weights)
+function my_minimiser(opt, x, var, structure, Z, weights; maxit=1000, length_minibatches = 100)
+    N,M = size(Z)
+    H = var.H 
+    q = var.q
     perm = shuffle(1:M)
     Z = Z[:,perm]
     weights = weights[perm]
@@ -155,40 +156,174 @@ function my_minimiser(opt, x, var, Z, weights; x_epsconv=1.0e-5, f_epsconv=1.0e-
             update!(opt, x, grad)
             f1,grad = pslikelihood(x,var,Z, weights, j*length_minibatches + 1 : (j+1)*length_minibatches)
         
-            if abs(f1 - finitial) <= f_epsconv 
-                println("Maxtol_f reached at ",abs(f1 - finitial))
-                return x, f1, "Maxtol_f reached", i
-            end  
-
-            if abs(maximum(xinitial-x)) <= x_epsconv
-                println("Maxtol_x reached at ",abs(maximum(xinitial-x)))
-                return x, f1, "Maxtol_x reached", i
-            end
             finitial = copy(f1)
             xinitial = copy(x)
         else
             update!(opt, x, grad)
             f1,grad = pslikelihood(x,var,Z, weights,(number_minibatches-1)*length_minibatches+1:M)
         
-            if abs(f1 - finitial) <= f_epsconv 
-                println("Maxtol_f reached at ",abs(f1 - finitial))
-                return x, f1, "Maxtol_f reached", i
-            end  
-
-            if abs(maximum(xinitial-x)) <= x_epsconv
-                println("Maxtol_x reached at ",abs(maximum(xinitial-x)))
-                return x, f1, "Maxtol_x reached", i
-            end
+            
             finitial = copy(f1)
             xinitial = copy(x)
             j = 0
         end
     end
 
-    return x, f1, "Maxeval reached", maxit
+    
+
+
+    W = reshape(x[1:H*N*N],H,N,N)
+    V = reshape(x[H*N*N+1:end], H,q,q)
+    score = compute_dcascore(W,V)
+    dist = compute_residue_pair_dist(structure)
+    roc = map(x->x[4],compute_referencescore(score, dist))
+    return x, f1, "Maxeval reached", score, roc
+
+
 end
 
-f(x) = sum(x.^2)
-function g!(grad,x)       
-    return grad .= 2*x 
+
+function fa_pslikelihood(x, plmvar,limits, Z, weights)
+
+    
+    H = plmvar.H 
+    N = plmvar.N
+    M = plmvar.M
+    d = plmvar.d
+    q = plmvar.q
+    λ = N*q*(plmvar.lambda)/M
+    
+    
+    L = 2*H*N*d + H*q*q 
+    L == length(x) || error("Wrong dimension of parameter vector")
+    
+
+    grad = zeros(Float64, L)
+
+    Q = reshape(x[1:H*N*d],H,d,N)
+    K = reshape(x[H*N*d+1 : 2*H*N*d],H,d,N)
+    V = reshape(x[2*H*N*d+1:end],H,q,q)
+
+    pseudologlikelihood = zeros(Float64, N)
+    reg = zeros(Float64, N)
+
+    J = zeros(Float64, N,N,q,q)
+    sf = zeros(Float64, H, N, N)
+    mat = zeros(Float64, N, q, q, N) # [site, a,b,j]
+    fact = zeros(Float64, N, H, N) #[site, h,j]   
+    Threads.@threads for site in 1:N 
+        pseudologlikelihood[site], reg[site], sf[:,site,:], mat[site, :, :, :], fact[site, :, :], J[site,:,:,:] = new_update_Q_site!(grad, Z, Q, K, V, site, weights,λ,limits)
+    end
+    
+    Threads.@threads for site in 1:N 
+        update_K_site!(grad, Q, V, site, sf, fact, J, λ)
+    end
+
+    update_V!(grad, Q, V, mat, sf, J, λ)
+    
+    regularisation = sum(reg)
+    total_pslikelihood = sum(pseudologlikelihood) + regularisation
+    
+    
+    
+
+    println(total_pslikelihood," ",regularisation)
+    return total_pslikelihood, grad
+
+end
+
+function fa_minimiser(opt, x, var, structure; maxit=1000, length_minibatches = 100)
+    Z = var.Z
+    N,M = size(Z)
+    H = var.H 
+    q = var.q
+    perm = shuffle(1:M)
+    d = var.d
+
+    Z = Z[:,perm]
+    weights = var.W 
+    weights = weights[perm]
+    number_minibatches = M ÷ length_minibatches
+    j = 0
+    finitial,grad = fa_pslikelihood(x,var,1:length_minibatches,Z, weights)
+    xinitial = copy(x)
+    f1 = 0
+    for i in 1:maxit 
+        j += 1 
+        if j != number_minibatches
+            update!(opt, x, grad)
+            f1,grad = fa_pslikelihood(x,var,j*length_minibatches + 1 : (j+1)*length_minibatches,Z, weights)
+        
+            finitial = copy(f1)
+            xinitial = copy(x)
+        else
+            update!(opt, x, grad)
+            f1,grad = fa_pslikelihood(x,var,(number_minibatches-1)*length_minibatches+1:M,Z, weights)
+        
+            
+            finitial = copy(f1)
+            xinitial = copy(x)
+            j = 0
+        end
+    end
+
+    
+
+
+    Q = reshape(x[1:H*d*N],H,d,N)
+    K = reshape(x[H*d*N+1:2*H*d*N],H,d,N)
+    V = reshape(x[2*H*d*N+1:end], H,q,q)
+    score = compute_dcascore_fa(Q,K,V)
+    dist = compute_residue_pair_dist(structure)
+    roc = map(x->x[4],compute_referencescore(score, dist))
+    return x, f1, "Maxeval reached", score, roc
+
+end
+
+
+function new_update_Q_site!(grad, Z, Q, K, V, site, weights, lambda, limits)
+    pg = pointer(grad)
+    size(Q) == size(K) || error("Wrong dimensionality for Q and K")
+    H,d,N = size(Q)
+    H,q,_ = size(V)
+    
+    sf = zeros(Float64, H, N)#[site,h,i]
+    @tullio W[h, j] := Q[h,d,$site]*K[h,d,j]
+    sf = softmax(W,dims=2)
+
+    @tullio J_site[j,a,b] := sf[h,j]*V[h,a,b]*(site!=j)
+    @tullio mat_ene[a,m] := J_site[j,a,Z[j,m]] 
+    partition = sumexp(mat_ene,dims=1) #partition function for each m ∈ 1:M
+
+    @tullio prob[a,m] := exp(mat_ene[a,m])/partition[m]
+    lge = log.(partition)
+
+    Z_site = view(Z,site,:)
+    @tullio pl = weights[m]*(mat_ene[Z_site[m],m] - lge[m])
+    pl *= -1
+
+    grad[(site-1)*d*H+1:site*d*H] .= 0.0
+
+    weights_minibatch = weights[limits]
+    Z_minibatch = view(Z,:,limits)
+    Z_site_minibatch = view(Z_site,limits)
+    prob_minibatch = view(prob,:,limits)
+
+    @tullio mat[a,b,j] := weights_minibatch[m]*(Z_minibatch[j,m]==b)*((Z_site_minibatch[m]==a)-prob_minibatch[a,m]) (a in 1:q, b in 1:q)
+    mat[:,:,site] .= 0.0
+    @tullio fact[h,j] := mat[a,b,j]*V[h,a,b]
+    
+    for counter in (site-1)*H*d + 1 : site*H*d
+        h,y,x = new_counter_to_index(counter, N, d, q, H)
+        @tullio innersum = K[$h,$y,j]*sf[$h,j]
+        @tullio outersum[j] := (K[$h,$y,j]*sf[$h,j] - sf[$h,j]*innersum) 
+        @tullio scra := fact[$h,j]*outersum[j]
+        @tullio ∇reg :=  J_site[j,a,b]*V[$h,a,b]*outersum[j]
+        grad[counter] += -scra + 2*lambda*∇reg 
+    end
+    
+    pg == pointer(grad) || error("Different pointer")
+    reg = lambda*L2Tensor(J_site)
+    return pl, reg, sf, mat, fact, J_site
+
 end
