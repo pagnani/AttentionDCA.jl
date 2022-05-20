@@ -89,7 +89,6 @@ end
 
 
 function fa_pl_and_grad!(grad, x, plmvar)
-
     pg = pointer(grad)
     H = plmvar.H 
     N = plmvar.N
@@ -112,19 +111,18 @@ function fa_pl_and_grad!(grad, x, plmvar)
     pseudologlikelihood = zeros(Float64, N)
     reg = zeros(Float64, N)
 
-    J = zeros(Float64, N,N,q,q)
-    sf = zeros(Float64, H, N, N)
-    mat = zeros(Float64, N, q, q, N) # [site, a,b,j]
-    fact = zeros(Float64, N, H, N) #[site, h,j]   
+    data = FAComputationQuantities(N,H,q)
+
+     
     Threads.@threads for site in 1:N 
-        pseudologlikelihood[site], reg[site], sf[:,site,:], mat[site, :, :, :], fact[site, :, :], J[site,:,:,:] = update_Q_site!(grad, Z, Q, K, V, site, weights,λ)
+        pseudologlikelihood[site], reg[site] = update_Q_site!(grad, Z, Q, K, V, site, weights,λ,data)
     end
     
     Threads.@threads for site in 1:N 
-        update_K_site!(grad, Q, V, site, sf, fact, J, λ)
+        update_K_site!(grad, Q, V, site, λ, data)
     end
 
-    update_V!(grad, Q, V, mat, sf, J, λ)
+    update_V!(grad, Q, V, λ, data)
     
     regularisation = sum(reg)
     total_pslikelihood = sum(pseudologlikelihood) + regularisation
@@ -137,18 +135,22 @@ function fa_pl_and_grad!(grad, x, plmvar)
 
 end
 
-function update_Q_site!(grad, Z, Q, K, V, site, weights, lambda)
+
+function update_Q_site!(grad, Z, Q, K, V, site, weights, lambda, data)
     pg = pointer(grad)
     size(Q) == size(K) || error("Wrong dimensionality for Q and K")
     H,d,N = size(Q)
     H,q,_ = size(V)
     
-    sf = zeros(Float64, H, N)#[site,h,i]
+
     @tullio W[h, j] := Q[h,d,$site]*K[h,d,j]
     sf = softmax(W,dims=2)
+    data.sf[:,site,:] = softmax(W,dims=2)
 
     @tullio J_site[j,a,b] := sf[h,j]*V[h,a,b]*(site!=j)
-    @tullio mat_ene[a,m] := J_site[j,a,Z[j,m]] 
+    data.J[site,:,:,:] = J_site
+
+    @tullio mat_ene[a,m] := data.J[$site,j,a,Z[j,m]] 
     partition = sumexp(mat_ene,dims=1) #partition function for each m ∈ 1:M
 
     @tullio prob[a,m] := exp(mat_ene[a,m])/partition[m]
@@ -158,58 +160,64 @@ function update_Q_site!(grad, Z, Q, K, V, site, weights, lambda)
     @tullio pl = weights[m]*(mat_ene[Z_site[m],m] - lge[m])
     pl *= -1
 
-    grad[(site-1)*d*H+1:site*d*H] .= 0.0
+
 
     @tullio mat[a,b,j] := weights[m]*(Z[j,m]==b)*((Z_site[m]==a)-prob[a,m]) (a in 1:q, b in 1:q)
     mat[:,:,site] .= 0.0
+    data.mat[site,:,:,:] = mat
+
     @tullio fact[h,j] := mat[a,b,j]*V[h,a,b]
-    
+    data.fact[site,:,:] = fact
+
     for counter in (site-1)*H*d + 1 : site*H*d
         h,y,x = new_counter_to_index(counter, N, d, q, H)
         @tullio innersum = K[$h,$y,j]*sf[$h,j]
         @tullio outersum[j] := (K[$h,$y,j]*sf[$h,j] - sf[$h,j]*innersum) 
         @tullio scra := fact[$h,j]*outersum[j]
         @tullio ∇reg :=  J_site[j,a,b]*V[$h,a,b]*outersum[j]
-        grad[counter] += -scra + 2*lambda*∇reg 
+        grad[counter] = -scra + 2*lambda*∇reg 
     end
     
     pg == pointer(grad) || error("Different pointer")
     reg = lambda*L2Tensor(J_site)
-    return pl, reg, sf, mat, fact, J_site
+    return pl, reg
 
 end
 
-function update_K_site!(grad, Q, V, site, sf, fact, J, lambda) #sf HNN, fact NHN
+function update_K_site!(grad, Q, V, site, lambda, data) #sf HNN, fact NHN
     pg = pointer(grad)
 
     H,d,N = size(Q)
     H,q,_ = size(V)
 
+
     for counter in H*N*d+(site-1)*H*d+1:H*N*d + site*H*d
         h,y,x = new_counter_to_index(counter, N, d, q, H) #h, lower dim, position
-        @tullio scra[i,j] := Q[$h,$y,i]*(sf[$h,i,j]*(x==j) - sf[$h,i,j]*sf[$h,i,$x])
-        @tullio scra2 := scra[i,j]*fact[i,$h,j]
-        @tullio ∇reg = scra[i,j]*V[$h,a,b]*J[i,j,a,b]
+        @tullio scra[i,j] := Q[$h,$y,i]*(data.sf[$h,i,j]*(x==j) - data.sf[$h,i,j]*data.sf[$h,i,$x])
+        @tullio scra2 := scra[i,j]*data.fact[i,$h,j]
+        @tullio scra1[a,b] := scra[i,j]*data.J[i,j,a,b]
+        @tullio ∇reg := scra1[a,b]*V[$h,a,b]
         grad[counter] = - scra2 + 2*lambda*∇reg
     end
     pg == pointer(grad) || error("Different pointer")
     return
 end
 
-function update_V!(grad, Q, V, mat, sf, J, lambda)
+function update_V!(grad, Q, V, lambda, data)
 
     pg = pointer(grad)
 
     H,d,N = size(Q)
     H,q,_ = size(V)
 
+
     grad[2*N*d*H+1:2*N*H*d + H*q*q] .= 0.0
     
     for counter in 2*N*d*H+1:2*N*H*d + H*q*q
         h,a,b = new_counter_to_index(counter, N,d,q, H)
         
-        @tullio scra[site] := mat[site,$a,$b,j]*sf[$h,site,j]
-        @tullio ∇reg = J[i,j,$a,$b]*sf[$h,i,j]
+        @tullio scra[site] := data.mat[site,$a,$b,j]*data.sf[$h,site,j]
+        @tullio ∇reg = data.J[i,j,$a,$b]*data.sf[$h,i,j]
         
         grad[counter] = -sum(scra) + 2*lambda*∇reg
         

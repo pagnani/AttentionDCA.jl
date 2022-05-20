@@ -51,3 +51,20 @@ struct FAPlmOut
     score::Array{Tuple{Int, Int, Float64},1}  
     roc::Union{Vector{Float64},Nothing}
 end
+
+struct FAComputationQuantities 
+    sf::Array{Float64,3}
+    J::Array{Float64,4}
+    mat::Array{Float64,4}
+    fact::Array{Float64,3}
+    function FAComputationQuantities(N,H,q)
+        sf = zeros(Float64, H, N, N)
+        J = zeros(Float64, N, N, q, q)
+        mat = zeros(Float64, N, q, q, N)
+        fact = zeros(Float64, N, H, N)
+        new(sf,J,mat,fact)
+    end
+end
+        
+        
+

@@ -277,7 +277,7 @@ function fa_minimiser(opt, x, var, structure; maxit=1000, length_minibatches = 1
     dist = compute_residue_pair_dist(structure)
     roc = map(x->x[4],compute_referencescore(score, dist))
     return x, f1, "Maxeval reached", score, roc
-
+    
 end
 
 
@@ -327,3 +327,4 @@ function new_update_Q_site!(grad, Z, Q, K, V, site, weights, lambda, limits)
     return pl, reg, sf, mat, fact, J_site
 
 end
+
