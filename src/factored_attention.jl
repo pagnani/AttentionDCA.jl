@@ -54,7 +54,7 @@ function attentionMinimizePL(alg::PlmAlg, var::FAPlmVar;
     verbose = true)
     LL = 2*var.H*var.N*var.d + var.H*var.q2
     x0 = if initx0 === nothing 
-        rand(Float64, LL)*0.0001
+        rand(Float64, LL)
     else 
         initx0
     end
@@ -119,7 +119,7 @@ function fa_pl_and_grad!(grad, x, plmvar)
     end
     
     Threads.@threads for site in 1:N 
-        update_K_site!(grad, Q, V, site, λ, data)
+        update_K_site!(grad, Q, V, site, λ, data.sf, data.J, data.fact)
     end
 
     update_V!(grad, Q, V, λ, data)
@@ -142,7 +142,6 @@ function update_Q_site!(grad, Z, Q, K, V, site, weights, lambda, data)
     H,d,N = size(Q)
     H,q,_ = size(V)
     
-
     @tullio W[h, j] := Q[h,d,$site]*K[h,d,j]
     sf = softmax(W,dims=2)
     data.sf[:,site,:] = softmax(W,dims=2)
@@ -161,14 +160,13 @@ function update_Q_site!(grad, Z, Q, K, V, site, weights, lambda, data)
     pl *= -1
 
 
-
     @tullio mat[a,b,j] := weights[m]*(Z[j,m]==b)*((Z_site[m]==a)-prob[a,m]) (a in 1:q, b in 1:q)
     mat[:,:,site] .= 0.0
     data.mat[site,:,:,:] = mat
 
     @tullio fact[h,j] := mat[a,b,j]*V[h,a,b]
     data.fact[site,:,:] = fact
-
+     
     for counter in (site-1)*H*d + 1 : site*H*d
         h,y,x = new_counter_to_index(counter, N, d, q, H)
         @tullio innersum = K[$h,$y,j]*sf[$h,j]
@@ -184,21 +182,21 @@ function update_Q_site!(grad, Z, Q, K, V, site, weights, lambda, data)
 
 end
 
-function update_K_site!(grad, Q, V, site, lambda, data) #sf HNN, fact NHN
+function update_K_site!(grad, Q, V, site, lambda, sf , J, fact) #sf HNN, fact NHN
     pg = pointer(grad)
 
     H,d,N = size(Q)
     H,q,_ = size(V)
-
-
+    
     for counter in H*N*d+(site-1)*H*d+1:H*N*d + site*H*d
         h,y,x = new_counter_to_index(counter, N, d, q, H) #h, lower dim, position
-        @tullio scra[i,j] := Q[$h,$y,i]*(data.sf[$h,i,j]*(x==j) - data.sf[$h,i,j]*data.sf[$h,i,$x])
-        @tullio scra2 := scra[i,j]*data.fact[i,$h,j]
-        @tullio scra1[a,b] := scra[i,j]*data.J[i,j,a,b]
+        @tullio scra[i,j] := Q[$h,$y,i]*(sf[$h,i,j]*(x==j) - sf[$h,i,j]*sf[$h,i,$x])
+        @tullio scra2 := scra[i,j]*fact[i,$h,j]
+        @tullio scra1[a,b] := scra[i,j]*J[i,j,a,b]
         @tullio ∇reg := scra1[a,b]*V[$h,a,b]
         grad[counter] = - scra2 + 2*lambda*∇reg
     end
+
     pg == pointer(grad) || error("Different pointer")
     return
 end
