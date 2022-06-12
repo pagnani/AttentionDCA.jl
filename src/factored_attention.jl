@@ -253,3 +253,19 @@ function new_counter_to_index(l::Int, N::Int, d:: Int, Q::Int, H::Int; verbose::
     end
 end
 
+function functiontest(fastafile, structfile, λ, step, iterations)
+    solutions = [] 
+    sol = AttentionBasedPlmDCA.factored_attention_plmdca(fastafile, structfile = structfile, epsconv = 1.0e-20, lambda = λ, maxit = step)
+    x = vcat(sol.Qtensor[:], sol.Ktensor[:], sol.Vtensor[:])
+    y = findfirst(X->X!=1.0, sol.roc)
+    push!(solutions, [sol.pslike, sol.roc, sol.score, y])
+
+    for i in 1:iterations
+        sol = AttentionBasedPlmDCA.factored_attention_plmdca(fastafile, structfile = structfile, epsconv = 1.0e-20, lambda = λ, maxit = step, initx0 = x)
+        x = vcat(sol.Qtensor[:], sol.Ktensor[:], sol.Vtensor[:])
+        y = findfirst(X->X!=1.0, sol.roc)
+        push!(solutions, [sol.pslike, sol.roc, sol.score, y])
+    end
+    return solutions
+end    
+        
