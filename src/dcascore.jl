@@ -104,8 +104,9 @@ function compute_fn(J::AbstractArray{T,4}) where {T<:AbstractFloat}
     q, q, L, L = size(J)
     fn = zeros(T, L, L)
     for i in 1:L
-        s = zero(T)
+        # s = zero(T)
         for j in 1:L
+            s = zero(T)
             for a in 1:q-1, b in 1:q-1
                 s += J[a, b, i, j]^2
             end
