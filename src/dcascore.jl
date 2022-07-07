@@ -140,20 +140,26 @@ function compute_ranking(S::Matrix{Float64}, min_separation::Int = 6)
 end
 
 
-function compute_actualroc(filestruct;cutoff=8.0)
-    distances=sort(readdlm(filestruct)[:,4])
-    L = length(distances)
+function compute_actualroc(filestruct;cutoff=8,min_separation=6)
+    distances=readdlm(filestruct)
+    L,_ = size(distances)
     l = 0
+    trivial_contacts = 0
     for i in 1:L
-        if distances[i]>cutoff
-            l = i 
-            break 
+        if distances[i,4]<cutoff
+            if abs(distances[i,1]-distances[i,2]) > min_separation
+                l += 1
+            else 
+                trivial_contacts += 1
+            end
         end
     end
-    L -= l
-    x = zeros(L)
+    println("l = $l")
+    println("L = $L")
+    println("trivial contacts = $trivial_contacts")
+    x = zeros(l)
     fill!(x,1.0)
-    scra = map(x->L/x,[L+1:L+l;])
+    scra = map(x->l/x,[l+1:(L-trivial_contacts);])
     return vcat(x,scra) 
     
 end
