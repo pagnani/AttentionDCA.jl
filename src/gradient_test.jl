@@ -82,7 +82,7 @@ function fa_total_pslikelihood(Z, Q, K, V, weights, lambda)
     
     lge = logsumexp(mat_ene,dims=1)[1,:,:]
     @tullio pseudologlikelihood = weights[m]*(mat_ene[Z[r,m],r,m] - lge[r,m])
-    pseudologlikelihood /= -1
+    pseudologlikelihood *= -1
 
     reg = λ*L2Tensor(J)
     pseudologlikelihood += reg
@@ -90,3 +90,7 @@ function fa_total_pslikelihood(Z, Q, K, V, weights, lambda)
     return pseudologlikelihood
    
 end
+
+
+
+
