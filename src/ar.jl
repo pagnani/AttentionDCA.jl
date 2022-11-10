@@ -1,6 +1,5 @@
 #Maybe I can speed up things computing the counter to index before entering any loop (???)
 
-
 function ar_attention_plmdca(Z::Array{T,2},Weights::Vector{Float64};
     msample::Union{Int64, Nothing} = nothing,
     H::Int = 32,
