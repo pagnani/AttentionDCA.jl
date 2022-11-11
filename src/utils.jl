@@ -66,10 +66,13 @@ function L2Tensor(matrix::Array{T,3}) where T <: Float64
     return L2
 end
 
-function reshapetensor(J::Array{Float64, 4}, N::Int)
+function reshapetensor(J::Array{Float64, 4}, N::Int, q)
     newJ = Array{Float64, 3}[]
+    _J = zeros(Float64, N, q, q)
     for i in 1:N-1 
-        push!(newJ,J[i+1,1:i,:,:])
+        _J = J[i+1,1:i,:,:]
+        @tullio Jscra[a,b,j] := _J[j,a,b]
+        push!(newJ,Jscra)
     end
     return newJ
 end
@@ -134,4 +137,29 @@ function sample(msamples::Int, J::Array{Array{Float64,3},1}, p0::Vector{Float64}
         res[:, i] .= sample_z
     end
     res
+end
+
+function my_sample(msamples::Int, J::Array{Array{Float64,3},1}, p1::Vector{Float64})
+    #no permutation stuff so far 
+    q = length(p1)
+    N = length(J) #here N is N-1
+
+    res = Matrix{Int}(undef,N+1,msamples)
+    Threads.@threads for m in 1:msamples 
+        sample_m = Vector{Int}(undef,N+1)
+        sample_m[1] = wsample(1:q, p1)
+        p = Vector{Float64}(undef,q)
+        for site in 1:N
+            Js = J[site]
+            for i in 1:site
+                for a in 1:q 
+                    p[a] += Js[a,sample_m[i],i]
+                end
+            end
+            p = softmax(p)
+            sample_m[site+1] = wsample(1:q,p)
+        end
+        res[:,m] .= sample_m
+    end
+    return res
 end

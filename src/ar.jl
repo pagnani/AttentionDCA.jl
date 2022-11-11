@@ -41,9 +41,9 @@ function ar_attention_plmdca(Z::Array{T,2},Weights::Vector{Float64};
     @tullio W[h,i, j] := Q[h,d,i]*K[h,d,j] #order HNd
     sf = softmax(W,dims=3) 
     @tullio J[i,j,a,b] := sf[h,i,j]*V[h,a,b]*(j<i)
-    J_reshaped = reshapetensor(J,N)
+    J_reshaped = reshapetensor(J,N,q)
     if msample !== nothing 
-        return sample(msample,J_reshaped,computep0(plmvar))
+        return my_sample(msample,J_reshaped,computep0(plmvar))
     else
         return parameters, J_reshaped
     end
