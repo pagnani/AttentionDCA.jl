@@ -114,52 +114,28 @@ function entropy(Z::AbstractArray{Ti,2}, W::AbstractVector{Float64}) where {Ti<:
     S
 end
 
-function sample(msamples::Int, J::Array{Array{Float64,3},1}, p0::Vector{Float64})
-    q = length(p0)
-    N = length(J) # here N is N-1 !!
-    idxperm = 1:N
-    backorder = sortperm(idxperm)
-    res = Matrix{Int}(undef, N + 1, msamples)
-    Threads.@threads for i in 1:msamples
-        totH = Vector{Float64}(undef, q)
-        sample_z = Vector{Int}(undef, N + 1)
-        sample_z[1] = wsample(1:q, p0)
-        for site in 1:N
-            Js = J[site]
-            @avx for i in 1:site
-                for a in 1:q
-                    totH[a] += Js[a, sample_z[i], i]
-                end
-            end
-            p = softmax(totH)
-            sample_z[site+1] = wsample(1:q, p)
-        end
-        res[:, i] .= sample_z
-    end
-    res
-end
 
-function my_sample(msamples::Int, J::Array{Array{Float64,3},1}, p1::Vector{Float64})
-    #no permutation stuff so far 
-    q = length(p1)
-    N = length(J) #here N is N-1
+# function my_sample(msamples::Int, J::Array{Array{Float64,3},1}, p1::Vector{Float64})
+#     #no permutation stuff so far 
+#     q = length(p1)
+#     N = length(J) #here N is N-1
 
-    res = Matrix{Int}(undef,N+1,msamples)
-    Threads.@threads for m in 1:msamples 
-        sample_m = Vector{Int}(undef,N+1)
-        sample_m[1] = wsample(1:q, p1)
-        p = Vector{Float64}(undef,q)
-        for site in 1:N
-            Js = J[site]
-            for i in 1:site
-                for a in 1:q 
-                    p[a] += Js[a,sample_m[i],i]
-                end
-            end
-            p = softmax(p)
-            sample_m[site+1] = wsample(1:q,p)
-        end
-        res[:,m] .= sample_m
-    end
-    return res
-end
+#     res = Matrix{Int}(undef,N+1,msamples)
+#     Threads.@threads for m in 1:msamples 
+#         sample_m = Vector{Int}(undef,N+1)
+#         sample_m[1] = wsample(1:q, p1)
+#         p = Vector{Float64}(undef,q)
+#         for site in 1:N
+#             Js = J[site]
+#             for i in 1:site
+#                 for a in 1:q 
+#                     p[a] += Js[a,sample_m[i],i]
+#                 end
+#             end
+#             p = softmax(p)
+#             sample_m[site+1] = wsample(1:q,p)
+#         end
+#         res[:,m] .= sample_m
+#     end
+#     return res
+# end

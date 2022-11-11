@@ -4,6 +4,7 @@ authors = ["Francesco Caredda, Andrea Pagnani,  Politecnico di Torino"]
 version = "0.1.0"
 
 [deps]
+ArDCA = "fc7e833f-a3b9-439d-ae82-c6ad11a3e54b"
 DCAUtils = "e41cd558-3099-4f6e-a65d-5336857e40aa"
 DelimitedFiles = "8bb1440f-4735-579b-a4ab-409b98df4dab"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"

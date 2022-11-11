@@ -77,13 +77,13 @@ struct AttComputationQuantities
     end
 end
 
-struct ArAttOut
-    likelihood::Float64
-    Qtensor::Array{Float64,3}
-    Ktensor::Array{Float64,3}
-    Vtensor::Array{Float64,3}
-    J::Array{Array{Float64,3},1}
-end
+# struct ArAttOut
+#     likelihood::Float64
+#     Qtensor::Array{Float64,3}
+#     Ktensor::Array{Float64,3}
+#     Vtensor::Array{Float64,3}
+#     J::Array{Array{Float64,3},1}
+# end
         
         
 

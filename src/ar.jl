@@ -13,6 +13,7 @@ function ar_attention_plmdca(Z::Array{T,2},Weights::Vector{Float64};
     epsconv::Real=1.0e-5,
     maxit::Int=1000,
     verbose::Bool=true,
+    permorder::Union{Symbol,Vector{Int}}=:ENTROPIC,
     method::Symbol=:LD_LBFGS) where T <: Integer
 
     all(x -> x > 0, Weights) || throw(DomainError("vector W should normalized and with all positive elements"))
@@ -22,6 +23,7 @@ function ar_attention_plmdca(Z::Array{T,2},Weights::Vector{Float64};
     q = Int(maximum(Z))
     plmalg = PlmAlg(method, verbose, epsconv, maxit)
     plmvar = AttPlmVar(N, M, d, q, H, lambda, Z, Weights)
+    arvar = ArVar(N,M,q,lambda,0.0,Z,Weights,permorder)
     dist = if structfile !== nothing 
         compute_residue_pair_dist(structfile)
     else
@@ -31,22 +33,16 @@ function ar_attention_plmdca(Z::Array{T,2},Weights::Vector{Float64};
     Q = reshape(parameters[1:H*d*N],H,d,N)
     K = reshape(parameters[H*d*N+1:2*H*d*N],H,d,N) 
     V = reshape(parameters[2*H*d*N+1:end],H,q,q)
-    # score = compute_dcascore_fa(Q, K, V)
-    # roc = if structfile !== nothing
-    #     map(x->x[4],compute_referencescore(score, compute_residue_pair_dist(structfile)))
-    # else
-    #     nothing
-    # end
-    # return FAPlmOut(pslike, Q, K, V, score,roc)
-    @tullio W[h,i, j] := Q[h,d,i]*K[h,d,j] #order HNd
+    @tullio W[h,i, j] := Q[h,d,i]*K[h,d,j] 
     sf = softmax(W,dims=3) 
     @tullio J[i,j,a,b] := sf[h,i,j]*V[h,a,b]*(j<i)
+    
     J_reshaped = reshapetensor(J,N,q)
-    if msample !== nothing 
-        return my_sample(msample,J_reshaped,computep0(plmvar))
-    else
-        return parameters, J_reshaped
-    end
+    p0 = computep0(plmvar)
+    H = [zeros(q) for i in 1:N-1]
+
+
+    return ArNet(arvar.idxperm, p0, J_reshaped,H), arvar 
 end
 
 function ar_attention_plmdca(filename::String;
