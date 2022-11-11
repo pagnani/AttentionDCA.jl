@@ -42,7 +42,7 @@ function ar_attention_plmdca(Z::Array{T,2},Weights::Vector{Float64};
     H = [zeros(q) for i in 1:N-1]
 
 
-    return ArNet(arvar.idxperm, p0, J_reshaped,H), arvar 
+    return ArNet(arvar.idxperm, p0, J_reshaped,H), arvar, parameters
 end
 
 function ar_attention_plmdca(filename::String;
