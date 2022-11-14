@@ -1,6 +1,6 @@
 function attention_plmdca(Z::Array{T,2},Weights::Vector{Float64};
     H::Int = 32,
-    d::Int = 10,
+    d::Int = 20,
     structfile::Union{String,Nothing} = nothing, 
     output::Union{String,Nothing} = nothing,
     initx0 = nothing,
