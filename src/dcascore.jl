@@ -1,12 +1,3 @@
-function compute_PPV(filestruct::String, W,V; min_separation::Int=1, verbose=true, kwds...)
-    H,N,N = size(W)
-    score=compute_dcascore(W, V, min_separation=min_separation)
-    dist = compute_residue_pair_dist(filestruct)
-    roc = compute_referencescore(score, dist; kwds...)
-    verbose && println("PPV(N) = ", roc[N][end], " PPV(N/5) = ", roc[div(N,5)][end])
-    return roc
-end
-
 function compute_residue_pair_dist(filedist::String)
     d = readdlm(filedist)
     return Dict((round(Int,d[i,1]),round(Int,d[i,2])) => d[i,4] for i in 1:size(d,1) if d[i,4] != 0)
@@ -36,28 +27,7 @@ function compute_referencescore(score,dist::Dict; mindist::Int=6, cutoff::Number
     out
 end
 
-function compute_dcascore(W, V; min_separation::Int=6)
-    
-    H,L,L = size(W)
-    H,q,q = size(V)
-    Wsf_site = softmax(W, dims=2)
-    @tullio Jtens[a, b, r, i] := Wsf_site[h, i, r] * V[h, a, b] * (i != r)
-
-    Jt = 0.5 * (Jtens + permutedims(Jtens,[2,1,4,3]))
-
-    # Jmat = reshape(permutedims(Jtens,[1,4,2,3]),L*q,L*q)
-
-    # Jmatsym = (Jmat .+ Jmat') ./ 2
-    #Jt = permutedims(reshape(Jtenssymm, q, L, q, L), [1, 3, 4, 2]) 
-    ht = zeros(eltype(Jt), q, L)
-    Jzsg, _ = gauge(Jt, ht, ZeroSumGauge())
-    FN = compute_fn(Jzsg)
-    FNapc = correct_APC(FN)
-    return compute_ranking(FNapc, min_separation)
-end
-
-
-function compute_dcascore_fa(Q, K, V; min_separation::Int=6)
+function score(Q, K, V; min_separation::Int=6)
     
     H,d,L = size(Q)
     H,d,L = size(K)
@@ -65,27 +35,6 @@ function compute_dcascore_fa(Q, K, V; min_separation::Int=6)
     @tullio W[h,i,j] := Q[h,d,i]*K[h,d,j] 
     W = softmax(W, dims=3)
     @tullio Jtens[a, b, r, i] := W[h, r, i] * V[h, a, b] * (i != r) (i in 1:L)
-
-    Jt = 0.5 * (Jtens + permutedims(Jtens,[2,1,4,3]))
-
-    # Jmat = reshape(permutedims(Jtens,[1,4,2,3]),L*q,L*q)
-
-    # Jmatsym = (Jmat .+ Jmat') ./ 2
-    #Jt = permutedims(reshape(Jtenssymm, q, L, q, L), [1, 3, 4, 2]) 
-    ht = zeros(eltype(Jt), q, L)
-    Jzsg, _ = gauge(Jt, ht, ZeroSumGauge())
-    FN = compute_fn(Jzsg)
-    FNapc = correct_APC(FN)
-    return compute_ranking(FNapc, min_separation)
-end
-
-
-function parallel_compute_dcascore(W, V; min_separation::Int=6)
-    
-    H,L,L = size(W)
-    H,q,q,N = size(V)
-    Wsf_site = softmax(W, dims=2)
-    @tullio Jtens[a, b, r, i] := Wsf_site[h, i, r] * V[h, a, b, r] * (i != r)
 
     Jt = 0.5 * (Jtens + permutedims(Jtens,[2,1,4,3]))
 
@@ -140,7 +89,7 @@ function compute_ranking(S::Matrix{Float64}, min_separation::Int = 6)
 end
 
 
-function compute_actualroc(filestruct;cutoff=8,min_separation=6)
+function compute_actualPPV(filestruct;cutoff=8,min_separation=6)
     distances=readdlm(filestruct)
     L,_ = size(distances)
     l = 0
@@ -164,3 +113,11 @@ function compute_actualroc(filestruct;cutoff=8,min_separation=6)
     
 end
 
+function compute_PPV(Out::AttPlmOut,filestruct)
+    @extract Out: Q K V
+    
+    dist = compute_residue_pair_dist(filestruct)
+    _score = score(Q, K, V) 
+    return map(x->x[4], compute_referencescore(_score, dist))
+
+end 

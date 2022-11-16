@@ -11,7 +11,7 @@ using Distributions: wsample
 using ExtractMacro
 using ArDCA
 
-export PlmOut, attention_plmdca, ar_attention_plmdca,compute_dcascore, compute_PPV, ArNet
+export AttPlmOut, AttPlmVar, attention, ar_attentionu, score, compute_PPV
 
 include("types.jl")
 include("utils.jl")

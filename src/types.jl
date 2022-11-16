@@ -5,30 +5,13 @@ struct PlmAlg
     maxit::Int
 end
 
-struct PlmOut
-    pslike::Union{Vector{Float64},Float64}
-    Wtensor::Array{Float64,3}
-    Vtensor::Union{Array{Float64,3},Array{Float64,4}}
-    score::Array{Tuple{Int, Int, Float64},1}  
-end
-
-# struct PlmOutParallel
+# struct PlmOut
 #     pslike::Union{Vector{Float64},Float64}
 #     Wtensor::Array{Float64,3}
-#     Vtensor::Array{Float64,4}
+#     Vtensor::Union{Array{Float64,3},Array{Float64,4}}
 #     score::Array{Tuple{Int, Int, Float64},1}  
 # end
 
-# struct PlmVar
-#     N::Int
-#     M::Int
-#     q::Int  
-#     q2::Int
-#     H::Int
-#     lambda::Float64
-#     Z::Array{Int,2} #MSA
-#     W::Array{Float64,1} #weigths
-# end
 
 
 struct AttPlmVar
@@ -41,27 +24,31 @@ struct AttPlmVar
     lambda::Float64
     Z::Array{Int,2} #MSA
     W::Array{Float64,1} #weigths
-    # IdxMatrix::Array{Array{Int,1},1} #used to avoid computing at every iteration the indices of the Q,K,V matrices
-    # function AttPlmVar(N,M,d,q,H,lambda,Z,Weigths)
-    #     IdxMatrix = Array{Int}[]
-    #     for i in 1:2*H*N*d + H*q*q
-    #         push!(IdxMatrix, counter_to_index(i, N,d,q,H))
-    #     end
-    #     new(N,M,d,q,q*q,H,lambda,Z,Weigths, IdxMatrix)
-    # end
     function AttPlmVar(N,M,d,q,H,lambda,Z,Weigths)
         new(N,M,d,q,q*q,H,lambda,Z,Weigths)
     end
 end
 
-struct AttPlmOut
-    pslike::Union{Vector{Float64},Float64}
-    Qtensor::Array{Float64,3}
-    Ktensor::Array{Float64,3}
-    Vtensor::Array{Float64,3}
-    score::Array{Tuple{Int, Int, Float64},1}  
-    roc::Union{Vector{Float64},Nothing}
+function Base.show(io::IO, AttPlmVar::AttPlmVar)
+    @extract AttPlmVar: N M d q H lambda
+    print(io,"AttPlmVar: \nN=$N\nM=$M\nq=$q\nH=$H\nd=$d\nλ=$(lambda)")
 end
+
+
+struct AttPlmOut
+    Q::Array{Float64,3}
+    K::Array{Float64,3}
+    V::Array{Float64,3}
+    pslike::Union{Vector{Float64},Float64}
+end
+
+function Base.show(io::IO, AttPlmOut::AttPlmOut)
+    @extract AttPlmOut: Q K V pslike
+    H,d,N = size(Q)
+    H,q,q = size(V) 
+    print(io,"AttPlmOut: \nsize(Q)=[$H,$d,$N]\nsize(K)=[$H,$d,$N]\nsize(V)=[$H,$q,$q]\npslike=$(pslike)")
+end
+
 
 struct AttComputationQuantities 
     sf::Array{Float64,3}
@@ -77,13 +64,5 @@ struct AttComputationQuantities
     end
 end
 
-# struct ArAttOut
-#     likelihood::Float64
-#     Qtensor::Array{Float64,3}
-#     Ktensor::Array{Float64,3}
-#     Vtensor::Array{Float64,3}
-#     J::Array{Array{Float64,3},1}
-# end
-        
         
 

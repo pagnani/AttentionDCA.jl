@@ -1,7 +1,6 @@
-function attention_plmdca(Z::Array{T,2},Weights::Vector{Float64};
+function attention(Z::Array{T,2},Weights::Vector{Float64};
     H::Int = 32,
     d::Int = 20,
-    structfile::Union{String,Nothing} = nothing, 
     output::Union{String,Nothing} = nothing,
     initx0 = nothing,
     min_separation::Int=6,
@@ -20,28 +19,17 @@ function attention_plmdca(Z::Array{T,2},Weights::Vector{Float64};
     q = Int(maximum(Z))
     plmalg = PlmAlg(method, verbose, epsconv, maxit)
     plmvar = AttPlmVar(N, M, d, q, H, lambda, Z, Weights) #MODIFYYYY
-    dist = if structfile !== nothing 
-        compute_residue_pair_dist(structfile)
-    else
-        nothing 
-    end
-
-    parameters, pslike = minimize_pl(plmalg, plmvar, dist=dist, output=output,verbose=verbose, initx0=initx0)
+    
+    parameters, pslike = minimize_pl(plmalg, plmvar,initx0=initx0)
     Q = reshape(parameters[1:H*d*N],H,d,N)
     K = reshape(parameters[H*d*N+1:2*H*d*N],H,d,N) 
     V = reshape(parameters[2*H*d*N+1:end],H,q,q)
-    score = compute_dcascore_fa(Q, K, V)
-    roc = if structfile !== nothing
-        map(x->x[4],compute_referencescore(score, compute_residue_pair_dist(structfile)))
-    else
-        nothing
-    end
-    
-    return AttPlmOut(pslike, Q, K, V, score,roc)
+
+    return AttPlmOut(Q, K, V, pslike)
 
 end
 
-function attention_plmdca(filename::String;
+function attention(filename::String;
     theta::Union{Symbol,Real}=:auto,
     max_gap_fraction::Real=0.9,
     remove_dups::Bool=true,
@@ -49,14 +37,11 @@ function attention_plmdca(filename::String;
     
     time = @elapsed Weights, Z, N, M, q = ReadFasta(filename, max_gap_fraction, theta, remove_dups)
     println("preprocessing took $time seconds")
-    attention_plmdca(Z, Weights; kwds...)
+    attention(Z, Weights; kwds...)
 end
 
 function minimize_pl(alg::PlmAlg, var::AttPlmVar;
-    initx0::Union{Nothing, Vector{Float64}} = nothing, 
-    dist::Union{Nothing, Dict} = nothing, 
-    output::Union{Nothing, String} = nothing,
-    verbose::Bool = true)
+    initx0::Union{Nothing, Vector{Float64}} = nothing)
     @extract var : N H d q2 LL = 2*H*N*d + H*q2
     
     x0 = if initx0 === nothing 
@@ -73,20 +58,13 @@ function minimize_pl(alg::PlmAlg, var::AttPlmVar;
     xtol_abs!(opt, alg.epsconv)
     ftol_rel!(opt, alg.epsconv)
     maxeval!(opt, alg.maxit)
-    file = if output !== nothing 
-        open(output, "a")
-    else
-        nothing
-    end
     min_objective!(opt, (x, g) -> optimfunwrapper(g,x, var))
     elapstime = @elapsed  (minf, minx, ret) = optimize(opt, x0)
     alg.verbose && @printf("pl = %.4f\t time = %.4f\t", minf, elapstime)
     alg.verbose && println("exit status = $ret")
     pl = minf
     parameters .= minx
-    if output !== nothing 
-        close(file)
-    end
+    
     return parameters, pl
 
 end

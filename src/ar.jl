@@ -1,6 +1,6 @@
 #Maybe I can speed up things computing the counter to index before entering any loop (???)
 
-function ar_attention_plmdca(Z::Array{T,2},Weights::Vector{Float64};
+function ar_attention(Z::Array{T,2},Weights::Vector{Float64};
     msample::Union{Int64, Nothing} = nothing,
     H::Int = 32,
     d::Int = 20,
@@ -45,14 +45,14 @@ function ar_attention_plmdca(Z::Array{T,2},Weights::Vector{Float64};
     return ArNet(arvar.idxperm, p0, J_reshaped,H), arvar, parameters, pslike
 end
 
-function ar_attention_plmdca(filename::String;
+function ar_attention(filename::String;
     theta::Union{Symbol,Real}=:auto,
     max_gap_fraction::Real=0.9,
     remove_dups::Bool=true,
     kwds...)
 time = @elapsed Weights, Z, N, M, q = ReadFasta(filename, max_gap_fraction, theta, remove_dups)
 println("preprocessing took $time seconds")
-ar_attention_plmdca(Z, Weights; kwds...)
+ar_attention(Z, Weights; kwds...)
 end
 
 function ar_minimizepl(alg::PlmAlg, var::AttPlmVar;

@@ -3,6 +3,13 @@ function optimfunwrapper(g::Vector,x::Vector, var::AttPlmVar)
     return pl_and_grad!(g, x, var)
 end
 
+function att_param(r,N;q=21)
+    L = number_plm(N,q=q)
+    d = sqrt(q^4 + 8*N*L*r) - q^2
+    d = d/(2*N)
+    return L, d
+end 
+
 function counter_to_index(l::Int, N::Int, d:: Int, Q::Int, H::Int; verbose::Bool=false)
     h::Int = 0
     if l <= H*N*d
@@ -41,21 +48,21 @@ function sumexp(a::AbstractArray{<:Real};dims=1)
     return sum(exp.(a .- m ).*exp.(m); dims=dims)
 end
 
-function ReadFasta(filename::AbstractString,max_gap_fraction::Real, theta::Any, remove_dups::Bool)
+function ReadFasta(filename::AbstractString,max_gap_fraction::Real, theta::Any, remove_dups::Bool;verbose=true)
 
     Z = read_fasta_alignment(filename, max_gap_fraction)
     if remove_dups
-        Z, _ = remove_duplicate_sequences(Z)
+        Z, _ = remove_duplicate_sequences(Z,verbose=verbose)
     end
 
     N, M = size(Z)
     q = round(Int,maximum(Z))
 
     q > 32 && error("parameter q=$q is too big (max 31 is allowed)")
-    W , Meff = compute_weights(Z,q,theta)
+    W , Meff = compute_weights(Z,q,theta,verbose=verbose)
     rmul!(W, 1.0/Meff)
     Zint=round.(Int,Z)
-    return W, Zint,N,M,q
+    return W,Zint,N,M,q
 end
 
 function L2Tensor(matrix::Array{T,3}) where T <: Float64
@@ -115,27 +122,4 @@ function entropy(Z::AbstractArray{Ti,2}, W::AbstractVector{Float64}) where {Ti<:
 end
 
 
-# function my_sample(msamples::Int, J::Array{Array{Float64,3},1}, p1::Vector{Float64})
-#     #no permutation stuff so far 
-#     q = length(p1)
-#     N = length(J) #here N is N-1
 
-#     res = Matrix{Int}(undef,N+1,msamples)
-#     Threads.@threads for m in 1:msamples 
-#         sample_m = Vector{Int}(undef,N+1)
-#         sample_m[1] = wsample(1:q, p1)
-#         p = Vector{Float64}(undef,q)
-#         for site in 1:N
-#             Js = J[site]
-#             for i in 1:site
-#                 for a in 1:q 
-#                     p[a] += Js[a,sample_m[i],i]
-#                 end
-#             end
-#             p = softmax(p)
-#             sample_m[site+1] = wsample(1:q,p)
-#         end
-#         res[:,m] .= sample_m
-#     end
-#     return res
-# end
