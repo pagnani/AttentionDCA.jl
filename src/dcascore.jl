@@ -121,3 +121,9 @@ function compute_PPV(Out::AttPlmOut,filestruct)
     return map(x->x[4], compute_referencescore(_score, dist))
 
 end 
+
+function compute_PPV(score::Vector{Tuple{Int,Int,Float64}}, filestruct::String)
+    dist = compute_residue_pair_dist(filestruct)
+    return map(x->x[4], compute_referencescore(score, dist))
+end
+
