@@ -20,12 +20,11 @@ function attention(Z::Array{T,2},Weights::Vector{Float64};
     plmalg = PlmAlg(method, verbose, epsconv, maxit)
     plmvar = AttPlmVar(N, M, d, q, H, lambda, Z, Weights) #MODIFYYYY
     
-    parameters, pslike, elapstime= minimize_pl(plmalg, plmvar,initx0=initx0)
+    parameters, pslike, elapstime, numevals= minimize_pl(plmalg, plmvar,initx0=initx0)
     Q = reshape(parameters[1:H*d*N],H,d,N)
     K = reshape(parameters[H*d*N+1:2*H*d*N],H,d,N) 
     V = reshape(parameters[2*H*d*N+1:end],H,q,q)
-
-    return AttPlmOut(Q, K, V, pslike), elapstime
+    return AttPlmOut(Q, K, V, pslike), elapstime, numevals
 
 end
 
@@ -60,12 +59,13 @@ function minimize_pl(alg::PlmAlg, var::AttPlmVar;
     maxeval!(opt, alg.maxit)
     min_objective!(opt, (x, g) -> optimfunwrapper(g,x, var))
     elapstime = @elapsed  (minf, minx, ret) = optimize(opt, x0)
+    numevals = opt.numevals
     alg.verbose && @printf("pl = %.4f\t time = %.4f\t", minf, elapstime)
     alg.verbose && println("exit status = $ret")
     pl = minf
     parameters .= minx
 
-    return parameters, pl, elapstime
+    return parameters, pl, elapstime, numevals
 end
 
 function pl_and_grad!(grad::Vector{Float64}, x::Vector{Float64}, plmvar::AttPlmVar)
