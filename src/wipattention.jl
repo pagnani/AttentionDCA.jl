@@ -1,3 +1,4 @@
+#ciao
 function wipattention(Z::Array{T,2},Weights::Vector{Float64};
     H::Int = 32,
     d::Int = 20,
@@ -265,3 +266,28 @@ end
 
 
 
+function test1(K,sf;h=1,y=1)
+    N = size(K,3)
+    outersum = zeros(N)
+
+    for m = 1:100
+        @tullio  innersum = K[$h,$y,j]*sf[$h,j] #order N
+        @tullio  outersum[j] := (K[$h,$y,j]*sf[$h,j] - sf[$h,j]*innersum) #order N
+    end
+    return outersum
+end
+
+function test2(K,sf; h=1, y=1)
+    N = size(K,3)
+    K = permutedims(K,(3,1,2))
+    sf = permutedims(sf,(2,1))
+    outersum = zeros(N)
+    for m in 1:100
+        @tullio  innersum = K[j,$h,$y]*sf[j,$h] #order N
+        @tullio  outersum[j] := (K[j,$h,$y]*sf[j,$h] - sf[j,$h]*innersum) #order N
+    end
+    K = permutedims(K,(2,3,1))
+    sf = permutedims(sf,(2,1))
+    return outersum
+
+end

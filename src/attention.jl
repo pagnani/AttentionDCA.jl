@@ -117,6 +117,7 @@ function update_Q_site!(grad::Vector{Float64}, Z::Array{Int,2}, Q::Array{Float64
     @tullio J_site[j,a,b] := sf[h,j]*V[h,a,b]*(site!=j) #order HNq^2
     data.J[site,:,:,:] .= J_site 
 
+
     @tullio mat_ene[a,m] := data.J[$site,j,a,Z[j,m]] #order NMq
     partition = sumexp(mat_ene,dims=1) #partition function for each m ∈ 1:M 
 
