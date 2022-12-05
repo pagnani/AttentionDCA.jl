@@ -70,7 +70,7 @@ end
 
 function pl_and_grad!(grad::Vector{Float64}, x::Vector{Float64}, plmvar::AttPlmVar)
     
-    @extract plmvar : H N M d q Z λ = N*q*lambda/M weights = W
+    @extract plmvar : H N M d q Z λ = N*q*lambda/M weights = W delta wdelta
     
     L = 2*H*N*d + H*q*q 
     L == length(x) || error("Wrong dimension of parameter vector")
@@ -87,7 +87,7 @@ function pl_and_grad!(grad::Vector{Float64}, x::Vector{Float64}, plmvar::AttPlmV
 
      
     Threads.@threads for site in 1:N 
-        pseudologlikelihood[site], reg[site] = update_Q_site!(grad, Z, Q, K, V, site, weights, λ, data)
+        pseudologlikelihood[site], reg[site] = update_Q_site!(grad, Z, Q, K, V, site, weights, λ, data,delta,wdelta)
     end
     
     Threads.@threads for site in 1:N 
@@ -104,7 +104,7 @@ function pl_and_grad!(grad::Vector{Float64}, x::Vector{Float64}, plmvar::AttPlmV
 
 end
 
-function update_Q_site!(grad::Vector{Float64}, Z::Array{Int,2}, Q::Array{Float64,3}, K::Array{Float64,3}, V::Array{Float64,3}, site::Int, weights::Vector{Float64}, lambda::Float64, data::AttComputationQuantities)
+function update_Q_site!(grad::Vector{Float64}, Z::Array{Int,2}, Q::Array{Float64,3}, K::Array{Float64,3}, V::Array{Float64,3}, site::Int, weights::Vector{Float64}, lambda::Float64, data::AttComputationQuantities, delta, wdelta)
     size(Q) == size(K) || error("Wrong dimensionality for Q and K")
     H,d,N = size(Q)
     H,q,_ = size(V)
@@ -121,6 +121,7 @@ function update_Q_site!(grad::Vector{Float64}, Z::Array{Int,2}, Q::Array{Float64
     partition = sumexp(mat_ene,dims=1) #partition function for each m ∈ 1:M 
 
     @tullio prob[a,m] := exp(mat_ene[a,m])/partition[m] #order Mq
+    # @tullio probnew[a,m] := delta[$site,m,a] - exp(mat_ene[a,m])/partition[m]
     lge = log.(partition) 
 
     Z_site = view(Z,site,:) 
@@ -129,6 +130,8 @@ function update_Q_site!(grad::Vector{Float64}, Z::Array{Int,2}, Q::Array{Float64
 
 
     @tullio mat[a,b,j] := weights[m]*(Z[j,m]==b)*((Z_site[m]==a)-prob[a,m]) (a in 1:q, b in 1:q) #order NMq^2
+    # @tullio mat[a,b,j] := weights[m]*(Z[j,m]==b)*probnew[a,m] (a in 1:q, b in 1:q) #order NMq^2
+    # @tullio mat[a,b,j] := wdelta[j,m,a]*probnew[a,m] (a in 1:q, b in 1:q)
     mat[:,:,site] .= 0.0 
     data.mat[site,:,:,:] .= mat
 
@@ -185,5 +188,3 @@ function update_V!(grad::Vector{Float64}, Q::Array{Float64,3}, V::Array{Float64,
     end
     return
 end
-
-

@@ -10,6 +10,37 @@ function att_param(r,N;q=21)
     return L, d
 end 
 
+
+
+# function counter_to_index(l::Int, N::Int, d:: Int, Q::Int, H::Int; verbose::Bool=false)
+#     h::Int = 0
+#     if l <= H*N*d
+#         h = ceil(l/(d*N))
+#         l = l-(d*N)*(h-1)
+#         m::Int = ceil(l/N)
+#         i::Int = l-N*(m-1)
+#         verbose && println("i = $i \nm = $m \nh = $h")
+#         return i,m,h
+#     elseif H*N*d < l <= 2*H*N*d 
+#         l-=d*N*H
+#         h = ceil(l/(d*N))
+#         l-=(d*N)*(h-1)
+#         n::Int = ceil(l/N)
+#         j::Int = l-N*(n-1)
+#         verbose && println("j = $j \nn = $n \nh = $h")
+#         return j,n,h
+#     else
+#         l-=2*N*d*H
+#         h = ceil(l/(Q*Q))
+#         l-=(Q*Q)*(h-1)
+#         b::Int = ceil(l/Q)
+#         a::Int = l-Q*(b-1)
+#         verbose && println("a = $a \nb = $b \nh = $h \n")
+#         return a, b, h 
+#     end
+# end
+
+
 function counter_to_index(l::Int, N::Int, d:: Int, Q::Int, H::Int; verbose::Bool=false)
     h::Int = 0
     if l <= H*N*d

@@ -19,5 +19,6 @@ include("dcascore.jl")
 include("gradient_test.jl")
 include("attention.jl")
 include("ar.jl")
+include("wipattention.jl")
 # include("scra.jl")
 end
