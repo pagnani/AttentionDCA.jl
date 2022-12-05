@@ -201,6 +201,7 @@ function wipupdate_QK_site!(grad::Vector{Float64}, Z::Array{Int,2}, Q::Array{Flo
 
     # @tullio mat[a,b,j] := weights[m]*(Z[j,m]==b)*((Z_site[m]==a)-prob[a,m]) (a in 1:q, b in 1:q) #order NMq^2
     # @tullio mat[a,b,j] := weights[m]*(Z[j,m]==b)*probnew[a,m] (a in 1:q, b in 1:q) #order NMq^2
+    
     @tullio mat[a,b,j] := wdelta[j,m,a]*probnew[m,a] (a in 1:q, b in 1:q)
     mat[:,:,site] .= 0.0 
     data.mat[site,:,:,:] .= mat
