@@ -1,4 +1,4 @@
-#ciao
+#ciaociao
 function wipattention(Z::Array{T,2},Weights::Vector{Float64};
     H::Int = 32,
     d::Int = 20,
@@ -70,7 +70,7 @@ function wipminimize_pl(alg::PlmAlg, var::AttPlmVar;
 end
 
 function wippl_and_grad!(grad::Vector{Float64}, x::Vector{Float64}, plmvar::AttPlmVar)
-    
+    println("ciao2")
     @extract plmvar : H N M d q Z λ = N*q*lambda/M weights = W delta wdelta
     
     L = 2*H*N*d + H*q*q 
