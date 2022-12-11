@@ -87,7 +87,7 @@ function pl_and_grad!(grad::Vector{Float64}, x::Vector{Float64}, plmvar::AttPlmV
 
      
     Threads.@threads for site in 1:N 
-        pseudologlikelihood[site], reg[site] = update_Q_site!(grad, Z, Q, K, V, site, weights, λ, data,delta,wdelta)
+        pseudologlikelihood[site], reg[site] = update_Q_site!(grad, Z, Q, K, V, site, weights, λ, data,view(delta,site,:,:),wdelta)
     end
     
     Threads.@threads for site in 1:N 
@@ -100,7 +100,7 @@ function pl_and_grad!(grad::Vector{Float64}, x::Vector{Float64}, plmvar::AttPlmV
     total_pslikelihood = sum(pseudologlikelihood) + regularisation
     
     println(total_pslikelihood," ",regularisation)
-    return total_pslikelihood
+    return total_pslikelihood, data
 
 end
 
@@ -121,8 +121,8 @@ function update_Q_site!(grad::Vector{Float64}, Z::Array{Int,2}, Q::Array{Float64
     @tullio mat_ene[a,m] := data.J[$site,j,a,Z[j,m]] #order NMq
     partition = sumexp(mat_ene,dims=1) #partition function for each m ∈ 1:M 
 
-    @tullio prob[a,m] := exp(mat_ene[a,m])/partition[m] #order Mq
-    # @tullio probnew[a,m] := delta[$site,m,a] - exp(mat_ene[a,m])/partition[m]
+    # @tullio prob[a,m] := exp(mat_ene[a,m])/partition[m] #order Mq
+    @tullio probnew[a,m] := delta[m,a] - exp(mat_ene[a,m])/partition[m]
     lge = log.(partition) 
 
     Z_site = view(Z,site,:) 
@@ -130,9 +130,9 @@ function update_Q_site!(grad::Vector{Float64}, Z::Array{Int,2}, Q::Array{Float64
     pl *= -1
 
 
-    @tullio mat[a,b,j] := weights[m]*(Z[j,m]==b)*((Z_site[m]==a)-prob[a,m]) (a in 1:q, b in 1:q) #order NMq^2
+    # @tullio mat[a,b,j] := weights[m]*(Z[j,m]==b)*((Z_site[m]==a)-prob[a,m]) (a in 1:q, b in 1:q) #order NMq^2
     # @tullio mat[a,b,j] := weights[m]*(Z[j,m]==b)*probnew[a,m] (a in 1:q, b in 1:q) #order NMq^2
-    # @tullio mat[a,b,j] := wdelta[j,m,a]*probnew[a,m] (a in 1:q, b in 1:q)
+    @tullio mat[a,b,j] := wdelta[j,m,b]*probnew[a,m] (a in 1:q, b in 1:q)
     mat[:,:,site] .= 0.0 
     data.mat[site,:,:,:] .= mat
 

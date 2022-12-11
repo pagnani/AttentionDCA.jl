@@ -70,7 +70,6 @@ function wipminimize_pl(alg::PlmAlg, var::AttPlmVar;
 end
 
 function wippl_and_grad!(grad::Vector{Float64}, x::Vector{Float64}, plmvar::AttPlmVar)
-    println("ciao2")
     @extract plmvar : H N M d q Z λ = N*q*lambda/M weights = W delta wdelta
     
     L = 2*H*N*d + H*q*q 
@@ -89,7 +88,7 @@ function wippl_and_grad!(grad::Vector{Float64}, x::Vector{Float64}, plmvar::AttP
     grad .= 0.0
      
     Threads.@threads for site in 1:N 
-        pseudologlikelihood[site], reg[site] = wipupdate_QK_site!(grad, Z, Q, K, V, site, weights, λ, data,delta,wdelta)
+        pseudologlikelihood[site], reg[site] = wipupdate_QK_site!(grad, Z, Q, K, V, site, weights, λ, data,view(delta,site,:,:),wdelta)
     end
     
     # Threads.@threads for site in 1:N 
@@ -102,7 +101,7 @@ function wippl_and_grad!(grad::Vector{Float64}, x::Vector{Float64}, plmvar::AttP
     total_pslikelihood = sum(pseudologlikelihood) + regularisation
     
     println(total_pslikelihood," ",regularisation)
-    return total_pslikelihood
+    return total_pslikelihood, data
 
 end
 
@@ -192,7 +191,7 @@ function wipupdate_QK_site!(grad::Vector{Float64}, Z::Array{Int,2}, Q::Array{Flo
     partition = sumexp(mat_ene,dims=1) #partition function for each m ∈ 1:M 
 
     # @tullio prob[a,m] := exp(mat_ene[a,m])/partition[m] #order Mq
-    @tullio probnew[m,a] := delta[$site,m,a] - exp(mat_ene[a,m])/partition[m]
+    @tullio probnew[m,a] := delta[m,a] - exp(mat_ene[a,m])/partition[m]
     lge = log.(partition) 
 
     Z_site = view(Z,site,:) 
@@ -202,13 +201,12 @@ function wipupdate_QK_site!(grad::Vector{Float64}, Z::Array{Int,2}, Q::Array{Flo
 
     # @tullio mat[a,b,j] := weights[m]*(Z[j,m]==b)*((Z_site[m]==a)-prob[a,m]) (a in 1:q, b in 1:q) #order NMq^2
     # @tullio mat[a,b,j] := weights[m]*(Z[j,m]==b)*probnew[a,m] (a in 1:q, b in 1:q) #order NMq^2
-    
-    @tullio mat[a,b,j] := wdelta[j,m,a]*probnew[m,a] (a in 1:q, b in 1:q)
+    @tullio mat[a,b,j] := wdelta[j,m,b]*probnew[m,a] (a in 1:q, b in 1:q)
     mat[:,:,site] .= 0.0 
     data.mat[site,:,:,:] .= mat
 
     @tullio fact[h,j] := mat[a,b,j]*V[h,a,b] #order HNq^2
-    # data.fact[site,:,:] .= fact 
+    data.fact[site,:,:] .= fact 
     outersum = zeros(Float64, N)
 
     @inbounds for counter in (site-1)*H*d + 1 : site*H*d 
@@ -225,7 +223,8 @@ function wipupdate_QK_site!(grad::Vector{Float64}, Z::Array{Int,2}, Q::Array{Flo
     scra = zeros(Float64,N)
     scra1 = zeros(Float64,q,q)
 
-    @inbounds for counter in H*N*d+1:2*H*N*d
+    # @inbounds 
+    for counter in H*N*d+1:2*H*N*d
         h,y,x = counter_to_index(counter, N, d, q, H) #h, lower dim, position
         @tullio scra[j] = Q[$h,$y,$site]*(sf[$h,j]*(x==j) - sf[$h,j]*sf[$h,$x]) #order N^2
         @tullio scra2 = scra[j]*fact[$h,j] #order N^2

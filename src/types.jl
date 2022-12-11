@@ -25,18 +25,12 @@ struct AttPlmVar
     Z::Array{Int,2} #MSA
     W::Array{Float64,1} #weigths
     delta::Array{Int,3}
-    # idx::Dict{Any,Any}
     wdelta::Array{Float64,3}
     function AttPlmVar(N,M,d,q,H,lambda,Z,Weigths)
-        idx = Dict()
+        
         @tullio delta[j,m,a] := Int(Z[j,m]==a) (a in 1:q)
         @tullio wdelta[j,m,a] := Weigths[m]*delta[j,m,a]
-        # for a in 1:q
-        #     for j in 1:N
-        #         push!(idx, [j,a] => findall(x->x==a,Z[j,:]))
-        #     end
-        # end
-        
+
         new(N,M,d,q,q*q,H,lambda,Z,Weigths,delta,wdelta)
     end
 end
