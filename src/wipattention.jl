@@ -101,7 +101,7 @@ function wippl_and_grad!(grad::Vector{Float64}, x::Vector{Float64}, plmvar::AttP
     total_pslikelihood = sum(pseudologlikelihood) + regularisation
     
     println(total_pslikelihood," ",regularisation)
-    return total_pslikelihood, data
+    return total_pslikelihood
 
 end
 
@@ -263,30 +263,3 @@ function wipoptimfunwrapper(g::Vector,x::Vector, var::AttPlmVar)
     return wippl_and_grad!(g, x, var)
 end
 
-
-
-function test1(K,sf;h=1,y=1)
-    N = size(K,3)
-    outersum = zeros(N)
-
-    for m = 1:100
-        @tullio  innersum = K[$h,$y,j]*sf[$h,j] #order N
-        @tullio  outersum[j] := (K[$h,$y,j]*sf[$h,j] - sf[$h,j]*innersum) #order N
-    end
-    return outersum
-end
-
-function test2(K,sf; h=1, y=1)
-    N = size(K,3)
-    K = permutedims(K,(3,1,2))
-    sf = permutedims(sf,(2,1))
-    outersum = zeros(N)
-    for m in 1:100
-        @tullio  innersum = K[j,$h,$y]*sf[j,$h] #order N
-        @tullio  outersum[j] := (K[j,$h,$y]*sf[j,$h] - sf[j,$h]*innersum) #order N
-    end
-    K = permutedims(K,(2,3,1))
-    sf = permutedims(sf,(2,1))
-    return outersum
-
-end
