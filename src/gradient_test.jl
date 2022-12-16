@@ -75,7 +75,7 @@ function fa_total_pslikelihood(Z, Q, K, V, weights, lambda)
     λ = q*N*lambda/M
 
     @tullio W[h,i,j] := Q[h,d,i]*K[h,d,j]
-    sf = softmax(W,dims=3)
+    sf = softmax_notinplace(W,dims=3)
     @tullio J[a,b,i,r] := sf[h,r,i]*V[h,a,b]*(i!=r)
 
     @tullio mat_ene[a,r,m] := J[a,Z[j,m],j,r]
@@ -85,7 +85,7 @@ function fa_total_pslikelihood(Z, Q, K, V, weights, lambda)
     pseudologlikelihood *= -1
 
     reg = λ*L2Tensor(J)
-    pseudologlikelihood += reg
+    pseudologlikelihood = pseudologlikelihood + reg
     println(pseudologlikelihood," ",reg)
     return pseudologlikelihood
    
@@ -93,4 +93,12 @@ end
 
 
 
-
+function softmax_notinplace(x::AbstractArray; dims = 1)
+    max_ = maximum(x; dims)
+    if all(isfinite, max_)
+        @fastmath out = exp.(x .- max_)
+    else
+        @fastmath @. out = ifelse(isequal(max_,Inf), ifelse(isequal(x,Inf), 1, 0), exp(x - max_))
+    end
+    return out ./ sum(out; dims)
+end
