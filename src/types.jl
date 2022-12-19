@@ -70,5 +70,17 @@ struct AttComputationQuantities
     end
 end
 
+struct wipAttComputationQuantities 
+    sf::Array{Float64,3}
+    J::Array{Float64,4}
+    mat::Array{Float64,4}
+    function wipAttComputationQuantities(N,H,q)
+        sf = zeros(Float64, N, N, H)
+        J = zeros(Float64, N, N, q, q)
+        mat = zeros(Float64, N, q, q, N)
+        new(sf,J,mat)
+    end
+end
+
         
 

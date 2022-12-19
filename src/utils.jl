@@ -96,7 +96,7 @@ function ReadFasta(filename::AbstractString,max_gap_fraction::Real, theta::Any, 
     return W,Zint,N,M,q
 end
 
-function L2Tensor(matrix::Array{T}) where T <: Float64
+function L2Tensor(matrix::AbstractArray{T}) where T <: Float64
     L2 = 0.0
     for x in matrix
         L2 += x*x 
