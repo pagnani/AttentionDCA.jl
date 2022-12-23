@@ -1,7 +1,4 @@
-#Maybe I can speed up things computing the counter to index before entering any loop (???)
-
-function ar_attention(Z::Array{T,2},Weights::Vector{Float64};
-    msample::Union{Int64, Nothing} = nothing,
+function attardca(Z::Array{T,2},Weights::Vector{Float64};
     H::Int = 32,
     d::Int = 20,
     structfile::Union{String,Nothing} = nothing, 
@@ -16,7 +13,7 @@ function ar_attention(Z::Array{T,2},Weights::Vector{Float64};
     permorder::Union{Symbol,Vector{Int}}=:ENTROPIC,
     method::Symbol=:LD_LBFGS) where T <: Integer
 
-    all(x -> x > 0, Weights) || throw(DomainError("vector W should normalized and with all positive elements"))
+    all(x -> x > 0, Weights) || throw(DomainError("vector W should be normalized and with all positive elements"))
     isapprox(sum(Weights), 1) || throw(DomainError("sum(W) ≠ 1. Consider normalizing the vector W"))
     N, M = size(Z)
     M = length(Weights)
@@ -45,14 +42,14 @@ function ar_attention(Z::Array{T,2},Weights::Vector{Float64};
     return ArNet(arvar.idxperm, p0, J_reshaped,H), arvar, parameters, pslike
 end
 
-function ar_attention(filename::String;
+function attardca(filename::String;
     theta::Union{Symbol,Real}=:auto,
     max_gap_fraction::Real=0.9,
     remove_dups::Bool=true,
     kwds...)
-time = @elapsed Weights, Z, N, M, q = ReadFasta(filename, max_gap_fraction, theta, remove_dups)
-println("preprocessing took $time seconds")
-ar_attention(Z, Weights; kwds...)
+    time = @elapsed Weights, Z, N, M, q = ReadFasta(filename, max_gap_fraction, theta, remove_dups)
+    println("preprocessing took $time seconds")
+    attardca(Z, Weights; kwds...)
 end
 
 function ar_minimizepl(alg::PlmAlg, var::AttPlmVar;
@@ -103,7 +100,7 @@ end
 
 
 function ar_pl_and_grad!(grad::Vector{Float64}, x::Vector{Float64}, plmvar::AttPlmVar)
-    @extract plmvar : N M H d q Z λ = N*q*lambda/M weights = W   
+    @extract plmvar : H N M d q Z λ = N*q*lambda/M weights = W delta wdelta
     
     L = 2*H*N*d + H*q*q 
     L == length(x) || error("Wrong dimension of parameter vector")
@@ -118,74 +115,77 @@ function ar_pl_and_grad!(grad::Vector{Float64}, x::Vector{Float64}, plmvar::AttP
 
     data = AttComputationQuantities(N,H,q)
 
+    grad .= 0.0
      
     Threads.@threads for site in 1:N 
-        pseudologlikelihood[site], reg[site] = ar_update_Q_site!(grad, Z, Q, K, V, site, weights, λ, data)
+        pseudologlikelihood[site], reg[site] = ar_update_QK_site!(grad, Z, view(Q,:,:,site), K, V, site, weights, λ, data,view(delta,site,:,:),wdelta)
     end
     
-    Threads.@threads for site in 1:N 
-        update_K_site!(grad, Q, V, site, λ, data.sf, data.J, data.fact)
-    end
-
     update_V!(grad, Q, V, λ, data)
     
     regularisation = sum(reg)
     total_pslikelihood = sum(pseudologlikelihood) + regularisation
-    
-    
     
     println(total_pslikelihood," ",regularisation)
     return total_pslikelihood
 
 end
 
-
-function ar_update_Q_site!(grad::Vector{Float64}, Z::Array{Int64,2}, Q::Array{Float64, 3}, K::Array{Float64, 3}, V::Array{Float64, 3}, site::Int64, weights::Vector{Float64}, lambda::Float64, data::AttComputationQuantities)
-    pg = pointer(grad)
-    size(Q) == size(K) || error("Wrong dimensionality for Q and K")
-    H,d,N = size(Q)
+function ar_update_QK_site!(grad::Vector{Float64}, Z::Array{Int,2}, Q::AbstractArray{Float64,2}, K::Array{Float64,3}, V::Array{Float64,3}, site::Int, weights::Vector{Float64}, lambda::Float64, data::AttComputationQuantities, delta, wdelta)
+    
+    H,d = size(Q)
     H,q,_ = size(V)
     
-    N,M = size(Z)
-    
-    @tullio W[h, j] := Q[h,d,$site]*K[h,d,j] #order HNd
-    sf = softmax(W,dims=2) 
-    data.sf[:,site,:] .= sf 
+    N,_ = size(Z) 
+    @tullio sf[j, h] := Q[h,d]*K[h,d,j]
+    softmax!(sf,dims=1) 
+    view(data.sf,:,site,:) .= sf
 
-    @tullio J_site[j,a,b] := sf[h,j]*V[h,a,b]*(j<site) #order HNq^2
-    data.J[site,:,:,:] .= J_site 
+    @tullio J_site[j,a,b] := sf[j,h]*V[h,a,b]
+    view(J_site,site:N,:,:) .= 0.0
+    view(data.J,site,:,:,:) .= J_site 
 
-    @tullio mat_ene[a,m] := data.J[$site,j,a,Z[j,m]] #order NMq
+    @tullio mat_ene[a,m] := J_site[j,a,Z[j,m]] #order NMq
     partition = sumexp(mat_ene,dims=1) #partition function for each m ∈ 1:M 
 
-    @tullio prob[a,m] := exp(mat_ene[a,m])/partition[m] #order Mq
+    @tullio probnew[m,a] := delta[m,a] - exp(mat_ene[a,m])/partition[m]
     lge = log.(partition) 
 
-    Z_site = view(Z,site,:)
+    Z_site = view(Z,site,:) 
     @tullio pl = weights[m]*(mat_ene[Z_site[m],m] - lge[m]) #order M
     pl *= -1
 
+    @tullio mat[a,b,j] := wdelta[j,m,b]*probnew[m,a] (a in 1:q, b in 1:q)
+    view(mat,:,:,site:N) .= 0.0     
+    view(data.mat,site,:,:,:) .= mat
 
-    @tullio mat[a,b,j] := weights[m]*(Z[j,m]==b)*((Z_site[m]==a)-prob[a,m]) (a in 1:q, b in 1:q) #order NMq^2
-    @tullio mat[a,b,j] *= (j<site)
-    # mat[:,:,site] .= 0.0 
-    data.mat[site,:,:,:] .= mat
-
-    @tullio fact[h,j] := mat[a,b,j]*V[h,a,b] #order HNq^2
-    data.fact[site,:,:] .= fact 
+    @tullio fact[j,h] := mat[a,b,j]*V[h,a,b] #order HNq^2
     outersum = zeros(Float64, N)
 
     @inbounds for counter in (site-1)*H*d + 1 : site*H*d 
         h,y,_ = counter_to_index(counter, N, d, q, H)
-        @tullio  innersum = K[$h,$y,j]*sf[$h,j] #order N
-        @tullio  outersum[j] = (K[$h,$y,j]*sf[$h,j] - sf[$h,j]*innersum) #order N
-        @tullio  scra = fact[$h,j]*outersum[j] #order N
+        @tullio  innersum = K[$h,$y,j]*sf[j,$h] #order N
+        @tullio  outersum[j] = (K[$h,$y,j]*sf[j,$h] - sf[j,$h]*innersum) #order N
+        @tullio  scra = fact[j,$h]*outersum[j] #order N
         @tullio  ∇reg =  J_site[j,a,b]*V[$h,a,b]*outersum[j] #order Nq^2
         grad[counter] = -scra + 2*lambda*∇reg 
     end
     reg = lambda*L2Tensor(J_site) 
-        pg == pointer(grad) || error("Different pointer")
-    return pl, reg
-end
 
+    
+    scra = zeros(Float64,N)
+    scra1 = zeros(Float64,q,q)
+    @inbounds for counter in H*N*d+1:2*H*N*d
+        h,y,x = counter_to_index(counter, N, d, q, H) #h, lower dim, position
+        @tullio scra[j] = Q[$h,$y]*(sf[j,$h]*(x==j) - sf[j,$h]*sf[$x,$h]) #order N^2
+        @tullio scra2 = scra[j]*fact[j,$h] #order N^2
+        @tullio scra1[a,b] = scra[j]*J_site[j,a,b] #order N^2q^2
+        @tullio ∇reg = scra1[a,b]*V[$h,a,b] #order q^2
+        grad[counter] += - scra2 + 2*lambda*∇reg
+    end
+
+
+    return pl, reg
+
+end
 

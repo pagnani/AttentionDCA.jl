@@ -11,7 +11,7 @@ using Distributions: wsample
 using ExtractMacro
 using ArDCA
 
-export AttPlmOut, AttPlmVar, attention, ar_attentionu, score, compute_PPV
+export AttPlmOut, AttPlmVar, attdca, attardca, score, compute_PPV
 
 include("types.jl")
 include("utils.jl")
@@ -19,6 +19,4 @@ include("dcascore.jl")
 include("gradient_test.jl")
 include("attention.jl")
 include("ar.jl")
-include("wipattention.jl")
-# include("scra.jl")
 end
