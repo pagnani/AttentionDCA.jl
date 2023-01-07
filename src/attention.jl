@@ -46,8 +46,7 @@ function minimize_pl(alg::PlmAlg, var::AttPlmVar;
 
 
     x0 = if initx0 === nothing 
-        # rand(Float64, LL)
-        fill(0.5,LL)
+        randn(Float64, LL)
     else 
         initx0
     end
