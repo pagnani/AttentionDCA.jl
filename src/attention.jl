@@ -1,4 +1,3 @@
-#ciaociao
 function attdca(Z::Array{T,2},Weights::Vector{Float64};
     H::Int = 32,
     d::Int = 20,
@@ -46,7 +45,7 @@ function minimize_pl(alg::PlmAlg, var::AttPlmVar;
 
 
     x0 = if initx0 === nothing 
-        randn(Float64, LL)
+        rand(Float64, LL)
     else 
         initx0
     end
