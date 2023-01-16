@@ -85,12 +85,16 @@ function pl_and_grad!(grad::Vector{Float64}, x::Vector{Float64}, plmvar::AttPlmV
 
     data = AttComputationQuantities(N,H,q)
 
+    big_scra_grad = zeros(N,H*N*d)
+
     grad .= 0.0
      
     Threads.@threads for site in 1:N 
-        pseudologlikelihood[site], reg[site] = update_QK_site!(grad, Z, view(Q,:,:,site), K, V, site, weights, λ, data,view(delta,site,:,:),wdelta)
+        pseudologlikelihood[site], reg[site], big_scra_grad[site,:] = update_QK_site!(grad, Z, view(Q,:,:,site), K, V, site, weights, λ, data,view(delta,site,:,:),wdelta)
     end
     
+    grad[H*N*d+1 : 2*H*N*d] = sum(big_scra_grad, dims=1) 
+
     update_V!(grad, Q, V, λ, data)
     
     regularisation = sum(reg)
@@ -140,22 +144,23 @@ function update_QK_site!(grad::Vector{Float64}, Z::Array{Int,2}, Q::AbstractArra
         @tullio  ∇reg =  J_site[j,a,b]*V[$h,a,b]*outersum[j] #order Nq^2
         grad[counter] = -scra + 2*lambda*∇reg 
     end
-    reg = lambda*L2Tensor(J_site) 
+    reg = lambda*L2Tensor(J_site)
 
     
     scra = zeros(Float64,N)
     scra1 = zeros(Float64,q,q)
+    scra_grad = []
     @inbounds for counter in H*N*d+1:2*H*N*d
         h,y,x = counter_to_index(counter, N, d, q, H) #h, lower dim, position
         @tullio scra[j] = Q[$h,$y]*(sf[j,$h]*(x==j) - sf[j,$h]*sf[$x,$h]) #order N^2
         @tullio scra2 = scra[j]*fact[j,$h] #order N^2
         @tullio scra1[a,b] = scra[j]*J_site[j,a,b] #order N^2q^2
         @tullio ∇reg = scra1[a,b]*V[$h,a,b] #order q^2
-        grad[counter] += - scra2 + 2*lambda*∇reg
+        push!(scra_grad, - scra2 + 2*lambda*∇reg)
     end
 
 
-    return pl, reg
+    return pl, reg, scra_grad
 
 end
 
@@ -178,8 +183,3 @@ function update_V!(grad::Vector{Float64}, Q::Array{Float64,3}, V::Array{Float64,
     end
     return
 end
-
-
-
-
-
