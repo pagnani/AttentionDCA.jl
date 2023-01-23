@@ -19,4 +19,5 @@ include("dcascore.jl")
 include("gradient_test.jl")
 include("attention.jl")
 include("ar.jl")
+include("oldar.jl")
 end

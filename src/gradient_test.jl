@@ -102,3 +102,60 @@ function softmax_notinplace(x::AbstractArray; dims = 1)
     end
     return out ./ sum(out; dims)
 end
+
+
+
+function ar_likelihood(Z,Q,K,V,lambda,weights)
+    H,d = size(Q)
+    H,q,_ = size(V)
+    N,M = size(Z)
+    
+    λ = N*q*lambda/M
+    
+    mask = zeros(N,N,H)
+    # mask = fill(-10000, N,N,H)
+    # for i in 1:H
+    #     mask[:,:,i] = UpperTriangular(mask[:,:,i])
+    # end
+    @tullio mask[i,j,h] := -10000*(j>=i) (i in 1:N, j in 1:N, h in 1:H)
+
+    @tullio scra_sf[i, j, h] := Q[h,d,i]*K[h,d,j] + mask[i,j,h]
+    # sf = scra_sf + mask 
+    sf = softmax_notinplace(scra_sf,dims=2) 
+
+    # @tullio J[i,j,a,b] := sf[i,j,h]*V[h,a,b]*(j<i)
+    @tullio J[i,j,a,b] := sf[i,j,h]*V[h,a,b]*(i!=1)
+
+    @tullio mat_ene[a,r,m] := J[r,j,a,Z[j,m]]
+    lge = logsumexp(mat_ene,dims=1)[1,:,:]
+
+    @tullio pl = weights[m]*(mat_ene[Z[r,m],r,m] - lge[r,m])
+    pl = -1*pl
+    reg = λ*L2Tensor(J)
+    
+    pl = pl + reg
+    return pl
+end 
+
+function likelihood(Z,Q,K,V,lambda,weights)
+    H,d = size(Q)
+    H,q,_ = size(V)
+    N,M = size(Z)
+    
+    λ = N*q*lambda/M
+
+    @tullio sf[i, j, h] := Q[h,d,i]*K[h,d,j]
+    sf = softmax_notinplace(sf,dims=2) 
+
+    @tullio J[i,j,a,b] := sf[i,j,h]*V[h,a,b]*(j!=i)
+
+    @tullio mat_ene[a,r,m] := J[r,j,a,Z[j,m]]
+    lge = logsumexp(mat_ene,dims=1)[1,:,:]
+
+    @tullio pl = weights[m]*(mat_ene[Z[r,m],r,m] - lge[r,m])
+    pl = -1*pl
+    reg = λ*L2Tensor(J)
+    
+    pl = pl + reg
+    return pl
+end 
