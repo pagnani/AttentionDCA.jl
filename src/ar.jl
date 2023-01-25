@@ -1,8 +1,6 @@
 function attardca(Z::Array{T,2},Weights::Vector{Float64};
     H::Int = 32,
     d::Int = 20,
-    structfile::Union{String,Nothing} = nothing, 
-    output::Union{String,Nothing} = nothing,
     initx0 = nothing,
     min_separation::Int=6,
     theta=:auto,
@@ -15,21 +13,19 @@ function attardca(Z::Array{T,2},Weights::Vector{Float64};
 
     all(x -> x > 0, Weights) || throw(DomainError("vector W should be normalized and with all positive elements"))
     isapprox(sum(Weights), 1) || throw(DomainError("sum(W) ≠ 1. Consider normalizing the vector W"))
+    
     N, M = size(Z)
     M = length(Weights)
     q = Int(maximum(Z))
     plmalg = PlmAlg(method, verbose, epsconv, maxit)
     plmvar = AttPlmVar(N, M, d, q, H, lambda, Z, Weights)
     arvar = ArVar(N,M,q,lambda,0.0,Z,Weights,permorder)
-    dist = if structfile !== nothing 
-        compute_residue_pair_dist(structfile)
-    else
-        nothing 
-    end
-    parameters, pslike = ar_minimizepl(plmalg, plmvar, dist=dist, output=output,verbose=verbose, initx0=initx0)
+    
+    parameters, pslike = ar_minimizepl(plmalg, plmvar, initx0=initx0)
     Q = reshape(parameters[1:H*d*N],H,d,N)
     K = reshape(parameters[H*d*N+1:2*H*d*N],H,d,N) 
     V = reshape(parameters[2*H*d*N+1:end],H,q,q)
+    
     @tullio W[h,i, j] := Q[h,d,i]*K[h,d,j] 
     sf = softmax(W,dims=3) 
     @tullio J[i,j,a,b] := sf[h,i,j]*V[h,a,b]*(j<i)
@@ -53,14 +49,10 @@ function attardca(filename::String;
 end
 
 function ar_minimizepl(alg::PlmAlg, var::AttPlmVar;
-    initx0 = nothing, 
-    dist = nothing, 
-    output::Union{Nothing, String} = nothing,
-    verbose = true)
+    initx0 = nothing)
 
     @extract var : N H d q2 LL = 2*H*N*d + H*q2
 
-    # LL = 2*var.H*var.N*var.d + var.H*var.q2
     x0 = if initx0 === nothing 
         rand(Float64, LL)
     else 
@@ -75,20 +67,13 @@ function ar_minimizepl(alg::PlmAlg, var::AttPlmVar;
     xtol_abs!(opt, alg.epsconv)
     ftol_rel!(opt, alg.epsconv)
     maxeval!(opt, alg.maxit)
-    file = if output !== nothing 
-        open(output, "a")
-    else
-        nothing
-    end
     min_objective!(opt, (x, g) -> ar_optimfunwrapperfactored(g,x, var))
     elapstime = @elapsed  (minf, minx, ret) = optimize(opt, x0)
     alg.verbose && @printf("pl = %.4f\t time = %.4f\t", minf, elapstime)
     alg.verbose && println("exit status = $ret")
     pl = minf
     ar_attention_parameters .= minx
-    if output !== nothing 
-        close(file)
-    end
+    
     return ar_attention_parameters, pl
 
 end
@@ -117,7 +102,7 @@ function ar_pl_and_grad!(grad::Vector{Float64}, x::Vector{Float64}, plmvar::AttP
 
     big_scra_grad = zeros(N,H*N*d)
 
-    grad .= 0.0
+    # grad .= 0.0
      
     Threads.@threads for site in 1:N 
         pseudologlikelihood[site], reg[site], big_scra_grad[site,:] = ar_update_QK_site!(grad, Z, view(Q,:,:,site), K, V, site, weights, λ, data,view(delta,site,:,:),wdelta)

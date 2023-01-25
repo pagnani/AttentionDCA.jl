@@ -1,7 +1,6 @@
 function attdca(Z::Array{T,2},Weights::Vector{Float64};
     H::Int = 32,
     d::Int = 20,
-    output::Union{String,Nothing} = nothing,
     initx0 = nothing,
     min_separation::Int=6,
     theta=:auto,
@@ -18,7 +17,7 @@ function attdca(Z::Array{T,2},Weights::Vector{Float64};
     M = length(Weights)
     q = Int(maximum(Z))
     plmalg = PlmAlg(method, verbose, epsconv, maxit)
-    plmvar = AttPlmVar(N, M, d, q, H, lambda, Z, Weights) #MODIFYYYY
+    plmvar = AttPlmVar(N, M, d, q, H, lambda, Z, Weights) 
     
     parameters, pslike, elapstime, numevals, ret = minimize_pl(plmalg, plmvar,initx0=initx0)
     Q = reshape(parameters[1:H*d*N],H,d,N)
@@ -41,8 +40,8 @@ end
 
 function minimize_pl(alg::PlmAlg, var::AttPlmVar;
     initx0::Union{Nothing, Vector{Float64}} = nothing)
+    
     @extract var : N H d q2 LL = 2*H*N*d + H*q2
-
 
     x0 = if initx0 === nothing 
         rand(Float64, LL)

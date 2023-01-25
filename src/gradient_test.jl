@@ -121,7 +121,7 @@ function ar_likelihood(Z,Q,K,V,lambda,weights)
 
     @tullio scra_sf[i, j, h] := Q[h,d,i]*K[h,d,j] + mask[i,j,h]
     # sf = scra_sf + mask 
-    sf = softmax_notinplace(scra_sf,dims=2) 
+    sf = softmax_notinplace(scra_sf./sqrt(d),dims=2) 
 
     # @tullio J[i,j,a,b] := sf[i,j,h]*V[h,a,b]*(j<i)
     @tullio J[i,j,a,b] := sf[i,j,h]*V[h,a,b]*(i!=1)

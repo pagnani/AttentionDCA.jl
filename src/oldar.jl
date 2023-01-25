@@ -11,7 +11,7 @@ function ar2_attention(Z::Array{T,2},Weights::Vector{Float64};
     epsconv::Real=1.0e-5,
     maxit::Int=1000,
     verbose::Bool=true,
-    permorder::Union{Symbol,Vector{Int}}=:ENTROPIC,
+    permorder::Union{Symbol,Vector{Int}}=:NATURAL,
     method::Symbol=:LD_LBFGS) where T <: Integer
 
     all(x -> x > 0, Weights) || throw(DomainError("vector W should normalized and with all positive elements"))
@@ -36,8 +36,8 @@ function ar2_attention(Z::Array{T,2},Weights::Vector{Float64};
     Q = reshape(parameters[1:H*d*N],H,d,N)
     K = reshape(parameters[H*d*N+1:2*H*d*N],H,d,N) 
     V = reshape(parameters[2*H*d*N+1:end],H,q,q)
-    @tullio W[h,i, j] := Q[h,d,i]*K[h,d,j] + mask[i,j,h]
-    sf = softmax(W,dims=3) 
+    @tullio W[h, i, j] := Q[h,d,i]*K[h,d,j] + mask[i,j,h]
+    sf = softmax(W./sqrt(d),dims=3) 
     @tullio J[i,j,a,b] := sf[h,i,j]*V[h,a,b]*(i!=1)
     
     J_reshaped = reshapetensor(J,N,q)
@@ -155,7 +155,7 @@ function ar2_update_Q_site!(grad::Vector{Float64}, Z::Array{Int64,2}, Q::Array{F
     # @tullio W[h, j] := Q[h,d,$site]*K[h,d,j]
     @tullio W[h, j] := Q[h,d,$site]*K[h,d,j] #order HNd
     @tullio W[h,j] += -10000*(j>=site) 
-    sf = softmax(W,dims=2) 
+    sf = softmax(W./sqrt(d),dims=2) 
     data.sf[:,site,:] .= sf 
 
     # @tullio J_site[j,a,b] := sf[h,j]*V[h,a,b]*(j<site) #order HNq^2
@@ -189,7 +189,7 @@ function ar2_update_Q_site!(grad::Vector{Float64}, Z::Array{Int64,2}, Q::Array{F
     @inbounds for counter in (site-1)*H*d + 1 : site*H*d 
         h,y,_ = counter_to_index(counter, N, d, q, H)
         @tullio  innersum = K[$h,$y,j]*sf[$h,j] #order N
-        @tullio  outersum[j] = (K[$h,$y,j]*sf[$h,j] - sf[$h,j]*innersum) #order N
+        @tullio  outersum[j] = (K[$h,$y,j]*sf[$h,j] - sf[$h,j]*innersum)/sqrt(d) #order N
         @tullio  scra = fact[$h,j]*outersum[j] #order N
         @tullio  ∇reg =  J_site[j,a,b]*V[$h,a,b]*outersum[j] #order Nq^2
         grad[counter] = -scra + 2*lambda*∇reg 
@@ -209,7 +209,7 @@ function old_update_K_site!(grad::Vector{Float64}, Q::Array{Float64,3}, V::Array
 
     @inbounds for counter in H*N*d+(site-1)*H*d+1:H*N*d + site*H*d
         h,y,x = counter_to_index(counter, N, d, q, H) #h, lower dim, position
-        @tullio scra[i,j] = Q[$h,$y,i]*(sf[$h,i,j]*(x==j) - sf[$h,i,j]*sf[$h,i,$x]) #order N^2
+        @tullio scra[i,j] = Q[$h,$y,i]*(sf[$h,i,j]*(x==j) - sf[$h,i,j]*sf[$h,i,$x])/sqrt(d) #order N^2
         @tullio scra2 = scra[i,j]*fact[i,$h,j] #order N^2
         @tullio scra1[a,b] = scra[i,j]*J[i,j,a,b] #order N^2q^2
         @tullio ∇reg = scra1[a,b]*V[$h,a,b] #order q^2
