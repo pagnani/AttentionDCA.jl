@@ -1,4 +1,4 @@
-function ar2_attention(Z::Array{T,2},Weights::Vector{Float64};
+function arold_attention(Z::Array{T,2},Weights::Vector{Float64};
     msample::Union{Int64, Nothing} = nothing,
     H::Int = 32,
     d::Int = 20,
@@ -27,7 +27,7 @@ function ar2_attention(Z::Array{T,2},Weights::Vector{Float64};
     else
         nothing 
     end
-    parameters, pslike = ar2_minimizepl(plmalg, plmvar, dist=dist, output=output,verbose=verbose, initx0=initx0)
+    parameters, pslike = arold_minimizepl(plmalg, plmvar, dist=dist, output=output,verbose=verbose, initx0=initx0)
     
     mask = zeros(N,N,H)
     @tullio mask[i,j,h] := -10000*(j>=i) (i in 1:N, j in 1:N, h in 1:H)
@@ -49,17 +49,17 @@ function ar2_attention(Z::Array{T,2},Weights::Vector{Float64};
 end
 
 
-function ar2_attention(filename::String;
+function arold_attention(filename::String;
     theta::Union{Symbol,Real}=:auto,
     max_gap_fraction::Real=0.9,
     remove_dups::Bool=true,
     kwds...)
 time = @elapsed Weights, Z, N, M, q = ReadFasta(filename, max_gap_fraction, theta, remove_dups)
 println("preprocessing took $time seconds")
-ar2_attention(Z, Weights; kwds...)
+arold_attention(Z, Weights; kwds...)
 end
 
-function ar2_minimizepl(alg::PlmAlg, var::AttPlmVar;
+function arold_minimizepl(alg::PlmAlg, var::AttPlmVar;
     initx0 = nothing, 
     dist = nothing, 
     output::Union{Nothing, String} = nothing,
@@ -74,7 +74,7 @@ function ar2_minimizepl(alg::PlmAlg, var::AttPlmVar;
         initx0
     end
     pl = 0.0
-    ar2_attention_parameters = zeros(LL)
+    arold_attention_parameters = zeros(LL)
 
     opt = Opt(alg.method, length(x0))
     ftol_abs!(opt, alg.epsconv)
@@ -87,28 +87,31 @@ function ar2_minimizepl(alg::PlmAlg, var::AttPlmVar;
     else
         nothing
     end
-    min_objective!(opt, (x, g) -> ar2_optimfunwrapperfactored(g,x, var))
+    min_objective!(opt, (x, g) -> arold_optimfunwrapperfactored(g,x, var))
     elapstime = @elapsed  (minf, minx, ret) = optimize(opt, x0)
     alg.verbose && @printf("pl = %.4f\t time = %.4f\t", minf, elapstime)
     alg.verbose && println("exit status = $ret")
     pl = minf
-    ar2_attention_parameters .= minx
+    arold_attention_parameters .= minx
     if output !== nothing 
         close(file)
     end
-    return ar2_attention_parameters, pl
+    return arold_attention_parameters, pl
 
 end
 
-function ar2_optimfunwrapperfactored(g::Vector{Float64},x::Vector{Float64}, var::AttPlmVar)
+function arold_optimfunwrapperfactored(g::Vector{Float64},x::Vector{Float64}, var::AttPlmVar)
     g === nothing && (g = zeros(Float64, length(x)))
-    return ar2_pl_and_grad!(g, x, var)
+    return arold_pl_and_grad!(g, x, var)
 end
 
 
-function ar2_pl_and_grad!(grad::Vector{Float64}, x::Vector{Float64}, plmvar::AttPlmVar)
-    @extract plmvar : N M H d q Z λ = N*q*lambda/M weights = W   
+function arold_pl_and_grad!(grad::Vector{Float64}, x::Vector{Float64}, plmvar::AttPlmVar)
+    @extract plmvar : N M H d q Z lambda weights = W   
     
+    numpar = N*(N-1)*q*q
+    λ = lambda/numpar
+
     L = 2*H*N*d + H*q*q 
     L == length(x) || error("Wrong dimension of parameter vector")
     L == length(grad) || error("Wrong dimension of gradient vector")
@@ -124,7 +127,7 @@ function ar2_pl_and_grad!(grad::Vector{Float64}, x::Vector{Float64}, plmvar::Att
 
      
     Threads.@threads for site in 1:N 
-        pseudologlikelihood[site], reg[site] = ar2_update_Q_site!(grad, Z, Q, K, V, site, weights, λ, data)
+        pseudologlikelihood[site], reg[site] = arold_update_Q_site!(grad, Z, Q, K, V, site, weights, λ, data)
     end
     
     Threads.@threads for site in 1:N 
@@ -144,7 +147,7 @@ function ar2_pl_and_grad!(grad::Vector{Float64}, x::Vector{Float64}, plmvar::Att
 end
 
 
-function ar2_update_Q_site!(grad::Vector{Float64}, Z::Array{Int64,2}, Q::Array{Float64, 3}, K::Array{Float64, 3}, V::Array{Float64, 3}, site::Int64, weights::Vector{Float64}, lambda::Float64, data::OldAttComputationQuantities)
+function arold_update_Q_site!(grad::Vector{Float64}, Z::Array{Int64,2}, Q::Array{Float64, 3}, K::Array{Float64, 3}, V::Array{Float64, 3}, site::Int64, weights::Vector{Float64}, lambda::Float64, data::OldAttComputationQuantities)
     pg = pointer(grad)
     size(Q) == size(K) || error("Wrong dimensionality for Q and K")
     H,d,N = size(Q)

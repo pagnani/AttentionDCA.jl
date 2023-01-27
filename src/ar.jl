@@ -94,8 +94,11 @@ end
 
 
 function ar_pl_and_grad!(grad::Vector{Float64}, x::Vector{Float64}, plmvar::AttPlmVar)
-    @extract plmvar : N M H d q Z λ = N*q*lambda/M weights = W   
+    @extract plmvar : N M H d q Z lambda weights = W   
     
+    numpar = N*(N-1)*q*q
+    λ = lambda / numpar
+
     L = 2*H*N*d + H*q*q 
     L == length(x) || error("Wrong dimension of parameter vector")
     L == length(grad) || error("Wrong dimension of gradient vector")
@@ -174,7 +177,7 @@ function ar_update_Q_site!(grad::Vector{Float64}, Z::Array{Int64,2}, Q::Array{Fl
         grad[counter] = -scra + 2*lambda*∇reg 
     end
     reg = lambda*L2Tensor(J_site) 
-        pg == pointer(grad) || error("Different pointer")
+    pg == pointer(grad) || error("Different pointer")
     return pl, reg
 end
 

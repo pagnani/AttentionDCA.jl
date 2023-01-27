@@ -105,25 +105,22 @@ end
 
 
 
-function ar_likelihood(Z,Q,K,V,lambda,weights)
+function ar2_likelihood(Z,Q,K,V,lambda,weights)
     H,d = size(Q)
     H,q,_ = size(V)
     N,M = size(Z)
     
-    λ = N*q*lambda/M
+    numpar = N*(N-1)*q*q
+    # numpar = 1.0
+    λ = lambda/numpar
     
     mask = zeros(N,N,H)
-    # mask = fill(-10000, N,N,H)
-    # for i in 1:H
-    #     mask[:,:,i] = UpperTriangular(mask[:,:,i])
-    # end
+    
     @tullio mask[i,j,h] := -10000*(j>=i) (i in 1:N, j in 1:N, h in 1:H)
 
-    @tullio scra_sf[i, j, h] := Q[h,d,i]*K[h,d,j] + mask[i,j,h]
-    # sf = scra_sf + mask 
+    @tullio scra_sf[i, j, h] := Q[h,d,i]*K[h,d,j] + mask[i,j,h] 
     sf = softmax_notinplace(scra_sf./sqrt(d),dims=2) 
 
-    # @tullio J[i,j,a,b] := sf[i,j,h]*V[h,a,b]*(j<i)
     @tullio J[i,j,a,b] := sf[i,j,h]*V[h,a,b]*(i!=1)
 
     @tullio mat_ene[a,r,m] := J[r,j,a,Z[j,m]]
@@ -134,18 +131,49 @@ function ar_likelihood(Z,Q,K,V,lambda,weights)
     reg = λ*L2Tensor(J)
     
     pl = pl + reg
+    # return pl, J, mat_ene, lge, pl - reg, reg
     return pl
 end 
+
+function ar_likelihood(Z,Q,K,V,lambda,weights)
+    H,d = size(Q)
+    H,q,_ = size(V)
+    N,M = size(Z)
+    
+    numpar = N*(N-1)*q*q
+    # numpar = 1.0
+    λ = lambda/numpar
+    
+    @tullio scra_sf[i, j, h] := Q[h,d,i]*K[h,d,j] 
+    sf = softmax_notinplace(scra_sf./sqrt(d),dims=2) 
+
+    @tullio J[i,j,a,b] := sf[i,j,h]*V[h,a,b]*(j<i)
+
+    @tullio mat_ene[a,r,m] := J[r,j,a,Z[j,m]]
+    lge = logsumexp(mat_ene,dims=1)[1,:,:]
+
+    @tullio pl = weights[m]*(mat_ene[Z[r,m],r,m] - lge[r,m])
+    pl = -1*pl
+    reg = λ*L2Tensor(J)
+    
+    pl = pl + reg
+    # return pl, J, mat_ene, lge, pl - reg, reg
+    return pl
+end 
+
+
 
 function likelihood(Z,Q,K,V,lambda,weights)
     H,d = size(Q)
     H,q,_ = size(V)
     N,M = size(Z)
     
-    λ = N*q*lambda/M
+    numpar = N*(N-1)*q*q
+    # numpar = 1.0
+    λ = lambda/numpar
 
     @tullio sf[i, j, h] := Q[h,d,i]*K[h,d,j]
-    sf = softmax_notinplace(sf,dims=2) 
+    sf = softmax_notinplace(sf./sqrt(d),dims=2) 
 
     @tullio J[i,j,a,b] := sf[i,j,h]*V[h,a,b]*(j!=i)
 
@@ -157,5 +185,5 @@ function likelihood(Z,Q,K,V,lambda,weights)
     reg = λ*L2Tensor(J)
     
     pl = pl + reg
-    return pl
+    return pl, J, mat_ene, lge, pl-reg, reg
 end 
