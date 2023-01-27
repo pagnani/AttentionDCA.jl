@@ -1,6 +1,9 @@
-function attardca(Z::Array{T,2},Weights::Vector{Float64};
+function ar_attention(Z::Array{T,2},Weights::Vector{Float64};
+    msample::Union{Int64, Nothing} = nothing,
     H::Int = 32,
     d::Int = 20,
+    structfile::Union{String,Nothing} = nothing, 
+    output::Union{String,Nothing} = nothing,
     initx0 = nothing,
     min_separation::Int=6,
     theta=:auto,
@@ -8,44 +11,48 @@ function attardca(Z::Array{T,2},Weights::Vector{Float64};
     epsconv::Real=1.0e-5,
     maxit::Int=1000,
     verbose::Bool=true,
-    permorder::Union{Symbol,Vector{Int}}=:ENTROPIC,
+    permorder::Union{Symbol,Vector{Int}}=:NATURAL,
     method::Symbol=:LD_LBFGS) where T <: Integer
 
-    all(x -> x > 0, Weights) || throw(DomainError("vector W should be normalized and with all positive elements"))
+    all(x -> x > 0, Weights) || throw(DomainError("vector W should normalized and with all positive elements"))
     isapprox(sum(Weights), 1) || throw(DomainError("sum(W) ≠ 1. Consider normalizing the vector W"))
-    
     N, M = size(Z)
     M = length(Weights)
     q = Int(maximum(Z))
     plmalg = PlmAlg(method, verbose, epsconv, maxit)
     plmvar = AttPlmVar(N, M, d, q, H, lambda, Z, Weights)
     arvar = ArVar(N,M,q,lambda,0.0,Z,Weights,permorder)
-    
+    dist = if structfile !== nothing 
+        compute_residue_pair_dist(structfile)
+    else
+        nothing 
+    end
     parameters, pslike = ar_minimizepl(plmalg, plmvar, initx0=initx0)
+    
     Q = reshape(parameters[1:H*d*N],H,d,N)
     K = reshape(parameters[H*d*N+1:2*H*d*N],H,d,N) 
     V = reshape(parameters[2*H*d*N+1:end],H,q,q)
-    
-    @tullio W[h,i, j] := Q[h,d,i]*K[h,d,j] 
-    sf = softmax(W,dims=3) 
+    @tullio W[h, i, j] := Q[h,d,i]*K[h,d,j]
+    sf = softmax(W./sqrt(d),dims=3) 
     @tullio J[i,j,a,b] := sf[h,i,j]*V[h,a,b]*(j<i)
     
     J_reshaped = reshapetensor(J,N,q)
     p0 = computep0(plmvar)
-    H = [zeros(q) for i in 1:N-1]
+    H = [zeros(q) for _ in 1:N-1]
 
 
-    return ArNet(arvar.idxperm, p0, J_reshaped,H), arvar, parameters, pslike
+    return ArNet(arvar.idxperm, p0, J_reshaped,H), arvar, parameters, pslike, J
 end
 
-function attardca(filename::String;
+
+function ar_attention(filename::String;
     theta::Union{Symbol,Real}=:auto,
     max_gap_fraction::Real=0.9,
     remove_dups::Bool=true,
     kwds...)
-    time = @elapsed Weights, Z, N, M, q = ReadFasta(filename, max_gap_fraction, theta, remove_dups)
-    println("preprocessing took $time seconds")
-    attardca(Z, Weights; kwds...)
+time = @elapsed Weights, Z, N, M, q = ReadFasta(filename, max_gap_fraction, theta, remove_dups)
+println("preprocessing took $time seconds")
+ar_attention(Z, Weights; kwds...)
 end
 
 function ar_minimizepl(alg::PlmAlg, var::AttPlmVar;
@@ -53,6 +60,7 @@ function ar_minimizepl(alg::PlmAlg, var::AttPlmVar;
 
     @extract var : N H d q2 LL = 2*H*N*d + H*q2
 
+    # LL = 2*var.H*var.N*var.d + var.H*var.q2
     x0 = if initx0 === nothing 
         rand(Float64, LL)
     else 
@@ -67,6 +75,7 @@ function ar_minimizepl(alg::PlmAlg, var::AttPlmVar;
     xtol_abs!(opt, alg.epsconv)
     ftol_rel!(opt, alg.epsconv)
     maxeval!(opt, alg.maxit)
+    
     min_objective!(opt, (x, g) -> ar_optimfunwrapperfactored(g,x, var))
     elapstime = @elapsed  (minf, minx, ret) = optimize(opt, x0)
     alg.verbose && @printf("pl = %.4f\t time = %.4f\t", minf, elapstime)
@@ -85,7 +94,7 @@ end
 
 
 function ar_pl_and_grad!(grad::Vector{Float64}, x::Vector{Float64}, plmvar::AttPlmVar)
-    @extract plmvar : H N M d q Z λ = N*q*lambda/M weights = W delta wdelta
+    @extract plmvar : N M H d q Z λ = N*q*lambda/M weights = W   
     
     L = 2*H*N*d + H*q*q 
     L == length(x) || error("Wrong dimension of parameter vector")
@@ -98,83 +107,131 @@ function ar_pl_and_grad!(grad::Vector{Float64}, x::Vector{Float64}, plmvar::AttP
     pseudologlikelihood = zeros(Float64, N)
     reg = zeros(Float64, N)
 
-    data = AttComputationQuantities(N,H,q)
+    data = OldAttComputationQuantities(N,H,q)
 
-    big_scra_grad = zeros(N,H*N*d)
-
-    # grad .= 0.0
      
     Threads.@threads for site in 1:N 
-        pseudologlikelihood[site], reg[site], big_scra_grad[site,:] = ar_update_QK_site!(grad, Z, view(Q,:,:,site), K, V, site, weights, λ, data,view(delta,site,:,:),wdelta)
+        pseudologlikelihood[site], reg[site] = ar_update_Q_site!(grad, Z, Q, K, V, site, weights, λ, data)
+    end
+    
+    Threads.@threads for site in 1:N 
+        old_update_K_site!(grad, Q, V, site, λ, data.sf, data.J, data.fact)
     end
 
-    grad[H*N*d+1 : 2*H*N*d] = sum(big_scra_grad, dims=1) 
-    
-    update_V!(grad, Q, V, λ, data)
+    old_update_V!(grad, Q, V, λ, data)
     
     regularisation = sum(reg)
     total_pslikelihood = sum(pseudologlikelihood) + regularisation
+    
+    
     
     println(total_pslikelihood," ",regularisation)
     return total_pslikelihood
 
 end
 
-function ar_update_QK_site!(grad::Vector{Float64}, Z::Array{Int,2}, Q::AbstractArray{Float64,2}, K::Array{Float64,3}, V::Array{Float64,3}, site::Int, weights::Vector{Float64}, lambda::Float64, data::AttComputationQuantities, delta, wdelta)
-    
-    H,d = size(Q)
+
+function ar_update_Q_site!(grad::Vector{Float64}, Z::Array{Int64,2}, Q::Array{Float64, 3}, K::Array{Float64, 3}, V::Array{Float64, 3}, site::Int64, weights::Vector{Float64}, lambda::Float64, data::OldAttComputationQuantities)
+    pg = pointer(grad)
+    size(Q) == size(K) || error("Wrong dimensionality for Q and K")
+    H,d,N = size(Q)
     H,q,_ = size(V)
     
-    N,_ = size(Z) 
-    @tullio sf[j, h] := Q[h,d]*K[h,d,j] 
-    softmax!(sf,dims=1) 
-    view(data.sf,:,site,:) .= sf
+    N,M = size(Z)
+    @tullio W[h, j] := Q[h,d,$site]*K[h,d,j] #order HNd
+    sf = softmax(W./sqrt(d),dims=2) 
+    data.sf[:,site,:] .= sf 
 
-    @tullio J_site[j,a,b] := sf[j,h]*V[h,a,b]
-    view(J_site,site:N,:,:) .= 0.0
-    view(data.J,site,:,:,:) .= J_site 
+    @tullio J_site[j,a,b] := sf[h,j]*V[h,a,b]*(j<site) #order HNq^2
+    data.J[site,:,:,:] .= J_site 
 
-    @tullio mat_ene[a,m] := J_site[j,a,Z[j,m]] #order NMq
+    @tullio mat_ene[a,m] := data.J[$site,j,a,Z[j,m]] #order NMq
     partition = sumexp(mat_ene,dims=1) #partition function for each m ∈ 1:M 
 
-    @tullio probnew[m,a] := delta[m,a] - exp(mat_ene[a,m])/partition[m]
+    @tullio prob[a,m] := exp(mat_ene[a,m])/partition[m] #order Mq
     lge = log.(partition) 
 
-    Z_site = view(Z,site,:) 
+    Z_site = view(Z,site,:)
     @tullio pl = weights[m]*(mat_ene[Z_site[m],m] - lge[m]) #order M
     pl *= -1
 
-    @tullio mat[a,b,j] := wdelta[j,m,b]*probnew[m,a] (a in 1:q, b in 1:q)
-    view(mat,:,:,site:N) .= 0.0     
-    view(data.mat,site,:,:,:) .= mat
 
-    @tullio fact[j,h] := mat[a,b,j]*V[h,a,b] #order HNq^2
+    @tullio mat[a,b,j] := weights[m]*(Z[j,m]==b)*((Z_site[m]==a)-prob[a,m]) (a in 1:q, b in 1:q) #order NMq^2
+    @tullio mat[a,b,j] *= (j<site)
+    # mat[:,:,site] .= 0.0 
+    data.mat[site,:,:,:] .= mat
+
+    @tullio fact[h,j] := mat[a,b,j]*V[h,a,b] #order HNq^2
+    data.fact[site,:,:] .= fact 
     outersum = zeros(Float64, N)
 
     @inbounds for counter in (site-1)*H*d + 1 : site*H*d 
         h,y,_ = counter_to_index(counter, N, d, q, H)
-        @tullio  innersum = K[$h,$y,j]*sf[j,$h] #order N
-        @tullio  outersum[j] = (K[$h,$y,j]*sf[j,$h] - sf[j,$h]*innersum) #order N
-        @tullio  scra = fact[j,$h]*outersum[j] #order N
+        @tullio  innersum = K[$h,$y,j]*sf[$h,j] #order N
+        @tullio  outersum[j] = (K[$h,$y,j]*sf[$h,j] - sf[$h,j]*innersum)/sqrt(d) #order N
+        @tullio  scra = fact[$h,j]*outersum[j] #order N
         @tullio  ∇reg =  J_site[j,a,b]*V[$h,a,b]*outersum[j] #order Nq^2
         grad[counter] = -scra + 2*lambda*∇reg 
     end
     reg = lambda*L2Tensor(J_site) 
-
-    
-    scra = zeros(Float64,N)
-    scra1 = zeros(Float64,q,q)
-    scra_grad = []
-    @inbounds for counter in H*N*d+1:2*H*N*d
-        h,y,x = counter_to_index(counter, N, d, q, H) #h, lower dim, position
-        @tullio scra[j] = Q[$h,$y]*(sf[j,$h]*(x==j) - sf[j,$h]*sf[$x,$h]) #order N^2
-        @tullio scra2 = scra[j]*fact[j,$h] #order N^2
-        @tullio scra1[a,b] = scra[j]*J_site[j,a,b] #order N^2q^2
-        @tullio ∇reg = scra1[a,b]*V[$h,a,b] #order q^2
-        push!(scra_grad, - scra2 + 2*lambda*∇reg)
-    end
-
-
-    return pl, reg, scra_grad
-
+        pg == pointer(grad) || error("Different pointer")
+    return pl, reg
 end
+
+
+# function old_update_K_site!(grad::Vector{Float64}, Q::Array{Float64,3}, V::Array{Float64,3}, site::Int, lambda::Float64, sf::Array{Float64,3}, J::Array{Float64,4}, fact::Array{Float64,3}) 
+#     H,d,N = size(Q)
+#     _,q,_ = size(V)
+    
+#     scra = zeros(Float64,N,N)
+#     scra1 = zeros(Float64,q,q)
+
+#     @inbounds for counter in H*N*d+(site-1)*H*d+1:H*N*d + site*H*d
+#         h,y,x = counter_to_index(counter, N, d, q, H) #h, lower dim, position
+#         @tullio scra[i,j] = Q[$h,$y,i]*(sf[$h,i,j]*(x==j) - sf[$h,i,j]*sf[$h,i,$x])/sqrt(d) #order N^2
+#         @tullio scra2 = scra[i,j]*fact[i,$h,j] #order N^2
+#         @tullio scra1[a,b] = scra[i,j]*J[i,j,a,b] #order N^2q^2
+#         @tullio ∇reg = scra1[a,b]*V[$h,a,b] #order q^2
+#         grad[counter] = - scra2 + 2*lambda*∇reg
+#     end
+#     return
+# end
+
+# function old_update_V!(grad::Vector{Float64}, Q::Array{Float64,3}, V::Array{Float64,3}, lambda::Float64, data::OldAttComputationQuantities)
+
+#     H,d,N = size(Q)
+#     H,q,_ = size(V)
+
+
+#     grad[2*N*d*H+1:2*N*H*d + H*q*q] .= 0.0
+#     scra = zeros(Float64, N)
+#     @inbounds for counter in 2*N*d*H+1:2*N*H*d + H*q*q
+#         h,a,b = counter_to_index(counter, N,d,q, H)
+#         @tullio scra[site] = data.mat[site,$a,$b,j]*data.sf[$h,site,j] #order N^2
+#         @tullio ∇reg = data.J[i,j,$a,$b]*data.sf[$h,i,j] #order N^2
+        
+#         grad[counter] = -sum(scra) + 2*lambda*∇reg
+        
+#     end
+#     return
+# end
+
+
+# function computeJtens(parameters::Vector, plmvar)
+    
+#     @extract plmvar : N H d q
+    
+#     mask = zeros(N,N,H)
+#     @tullio mask[i,j,h] := -10000*(j>=i) (i in 1:N, j in 1:N, h in 1:H)
+
+
+#     Q = reshape(parameters[1:H*d*N],H,d,N)
+#     K = reshape(parameters[H*d*N+1:2*H*d*N],H,d,N) 
+#     V = reshape(parameters[2*H*d*N+1:end],H,q,q)
+#     @tullio W[h,i, j] := Q[h,d,i]*K[h,d,j] + mask[i,j,h]
+#     sf = softmax(W,dims=3) 
+#     @tullio J[a,i,b,j] := sf[h,i,j]*V[h,a,b]*(i!=1)
+
+#     return J
+
+# end

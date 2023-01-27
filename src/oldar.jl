@@ -45,7 +45,7 @@ function ar2_attention(Z::Array{T,2},Weights::Vector{Float64};
     H = [zeros(q) for i in 1:N-1]
 
 
-    return ArNet(arvar.idxperm, p0, J_reshaped,H), arvar, parameters, pslike
+    return ArNet(arvar.idxperm, p0, J_reshaped,H), arvar, parameters, pslike, J
 end
 
 

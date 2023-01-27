@@ -20,4 +20,5 @@ include("gradient_test.jl")
 include("attention.jl")
 include("ar.jl")
 include("oldar.jl")
+# include("newar.jl")
 end
