@@ -69,8 +69,11 @@ function minimize_pl(alg::PlmAlg, var::AttPlmVar;
 end
 
 function pl_and_grad!(grad::Vector{Float64}, x::Vector{Float64}, plmvar::AttPlmVar)
-    @extract plmvar : H N M d q Z λ = N*q*lambda/M weights = W delta wdelta
+    @extract plmvar : H N M d q Z lambda weights = W delta wdelta
     
+    numpar = N*(N-1)*q*q
+    λ = lambda / numpar
+
     L = 2*H*N*d + H*q*q 
     L == length(x) || error("Wrong dimension of parameter vector")
     L == length(grad) || error("Wrong dimension of gradient vector")
