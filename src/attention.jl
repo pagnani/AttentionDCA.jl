@@ -104,17 +104,14 @@ function pl_and_grad!(grad::Vector{Float64}, x::Vector{Float64}, plmvar::AttPlmV
     
     println(total_pslikelihood," ",regularisation)
     return total_pslikelihood
-
 end
 
 function update_QK_site!(grad::Vector{Float64}, Z::Array{Int,2}, Q::AbstractArray{Float64,2}, K::Array{Float64,3}, V::Array{Float64,3}, site::Int, weights::Vector{Float64}, lambda::Float64, data::AttComputationQuantities, delta, wdelta)
-    
     H,d = size(Q)
     H,q,_ = size(V)
-    
     N,_ = size(Z) 
     @tullio sf[j, h] := Q[h,d]*K[h,d,j]
-    softmax!(sf,dims=1) 
+    sf = softmax(sf./sqrt(d),dims=1) 
     view(data.sf,:,site,:) .= sf
 
     @tullio J_site[j,a,b] := sf[j,h]*V[h,a,b]
@@ -141,7 +138,7 @@ function update_QK_site!(grad::Vector{Float64}, Z::Array{Int,2}, Q::AbstractArra
     @inbounds for counter in (site-1)*H*d + 1 : site*H*d 
         h,y,_ = counter_to_index(counter, N, d, q, H)
         @tullio  innersum = K[$h,$y,j]*sf[j,$h] #order N
-        @tullio  outersum[j] = (K[$h,$y,j]*sf[j,$h] - sf[j,$h]*innersum) #order N
+        @tullio  outersum[j] = (K[$h,$y,j]*sf[j,$h] - sf[j,$h]*innersum)/sqrt(d) #order N
         @tullio  scra = fact[j,$h]*outersum[j] #order N
         @tullio  ∇reg =  J_site[j,a,b]*V[$h,a,b]*outersum[j] #order Nq^2
         grad[counter] = -scra + 2*lambda*∇reg 
@@ -154,7 +151,7 @@ function update_QK_site!(grad::Vector{Float64}, Z::Array{Int,2}, Q::AbstractArra
     scra_grad = []
     @inbounds for counter in H*N*d+1:2*H*N*d
         h,y,x = counter_to_index(counter, N, d, q, H) #h, lower dim, position
-        @tullio scra[j] = Q[$h,$y]*(sf[j,$h]*(x==j) - sf[j,$h]*sf[$x,$h]) #order N^2
+        @tullio scra[j] = Q[$h,$y]*(sf[j,$h]*(x==j) - sf[j,$h]*sf[$x,$h])/sqrt(d) #order N^2
         @tullio scra2 = scra[j]*fact[j,$h] #order N^2
         @tullio scra1[a,b] = scra[j]*J_site[j,a,b] #order N^2q^2
         @tullio ∇reg = scra1[a,b]*V[$h,a,b] #order q^2

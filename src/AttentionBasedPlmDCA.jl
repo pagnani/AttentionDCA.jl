@@ -11,7 +11,7 @@ using Distributions: wsample
 using ExtractMacro
 using ArDCA
 
-export AttPlmOut, AttPlmVar, attdca, attardca, score, compute_PPV
+export AttPlmOut, AttPlmVar, attdca, attardca, score, compute_PPV, L2reg
 
 include("types.jl")
 include("utils.jl")

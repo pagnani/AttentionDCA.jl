@@ -155,7 +155,6 @@ function ar_likelihood(Z,Q,K,V,lambda,weights)
     @tullio pl = weights[m]*(mat_ene[Z[r,m],r,m] - lge[r,m])
     pl = -1*pl
     reg = λ*L2Tensor(J)
-    
     pl = pl + reg
     # return pl, J, mat_ene, lge, pl - reg, reg
     return pl
@@ -167,23 +166,24 @@ function likelihood(Z,Q,K,V,lambda,weights)
     H,d = size(Q)
     H,q,_ = size(V)
     N,M = size(Z)
-    
     numpar = N*(N-1)*q*q
     # numpar = 1.0
     λ = lambda/numpar
-
+    
     @tullio sf[i, j, h] := Q[h,d,i]*K[h,d,j]
     sf = softmax_notinplace(sf./sqrt(d),dims=2) 
-
+    
     @tullio J[i,j,a,b] := sf[i,j,h]*V[h,a,b]*(j!=i)
-
+   
     @tullio mat_ene[a,r,m] := J[r,j,a,Z[j,m]]
     lge = logsumexp(mat_ene,dims=1)[1,:,:]
 
     @tullio pl = weights[m]*(mat_ene[Z[r,m],r,m] - lge[r,m])
     pl = -1*pl
     reg = λ*L2Tensor(J)
-    
+    # println(reg)
     pl = pl + reg
-    return pl, J, mat_ene, lge, pl-reg, reg
+    println(pl," ",reg)
+    # return pl, J, mat_ene, lge, pl-reg, reg
+   return pl
 end 

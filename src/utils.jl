@@ -166,3 +166,24 @@ function softmax!(out::AbstractArray{T}, x::AbstractArray; dims = 1) where {T}
     end
     out ./= sum(out; dims)
 end
+
+function L2reg(Q::AbstractArray{Float64,3},K::AbstractArray{Float64,3},V::AbstractArray{Float64,3},lambda)
+    _,d,N = size(Q)
+    _,q,q = size(V)
+
+    numpar = N*(N-1)*q*q
+    @tullio sf[i, j, h] := Q[h,d,i]*K[h,d,j]
+    sf = softmax_notinplace(sf./sqrt(d),dims=2) 
+
+    @tullio J[i,j,a,b] := sf[i,j,h]*V[h,a,b]*(j!=i)
+    
+    l2 = L2Tensor(J)
+
+    λ = lambda / numpar
+    return λ*l2
+end
+
+
+function L2reg(out::AttPlmOut, lambda) 
+    return L2reg(out.Q::AbstractArray{Float64,3},out.K::AbstractArray{Float64,3},out.V::AbstractArray{Float64,3}, lambda)
+end
