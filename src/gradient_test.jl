@@ -162,7 +162,7 @@ end
 
 
 
-function likelihood(Z,Q,K,V,lambda,weights)
+function likelihood(Z,Q,K,V,lambda,weights; dd = size(Q,2))
     H,d = size(Q)
     H,q,_ = size(V)
     N,M = size(Z)
@@ -171,7 +171,7 @@ function likelihood(Z,Q,K,V,lambda,weights)
     λ = lambda/numpar
     
     @tullio sf[i, j, h] := Q[h,d,i]*K[h,d,j]
-    sf = softmax_notinplace(sf./sqrt(d),dims=2) 
+    sf = softmax_notinplace(sf./sqrt(dd),dims=2) 
     
     @tullio J[i,j,a,b] := sf[i,j,h]*V[h,a,b]*(j!=i)
    

@@ -18,6 +18,7 @@ struct AttPlmVar
     N::Int
     M::Int
     d::Int
+    dd::Float64
     q::Int  
     q2::Int
     H::Int
@@ -26,12 +27,12 @@ struct AttPlmVar
     W::Array{Float64,1} #weigths
     delta::Array{Int,3}
     wdelta::Array{Float64,3}
-    function AttPlmVar(N,M,d,q,H,lambda,Z,Weigths)
+    function AttPlmVar(N,M,d,q,H,lambda,Z,Weigths; dd = Float64(d))
         
         @tullio delta[j,m,a] := Int(Z[j,m]==a) (a in 1:q)
         @tullio wdelta[j,m,a] := Weigths[m]*delta[j,m,a]
 
-        new(N,M,d,q,q*q,H,lambda,Z,Weigths,delta,wdelta)
+        new(N,M,d,dd,q,q*q,H,lambda,Z,Weigths,delta,wdelta)
     end
 end
 

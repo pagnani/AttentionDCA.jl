@@ -1,6 +1,7 @@
 function attdca(Z::Array{T,2},Weights::Vector{Float64};
     H::Int = 32,
     d::Int = 20,
+    dd = d,
     initx0 = nothing,
     min_separation::Int=6,
     theta=:auto,
@@ -17,7 +18,7 @@ function attdca(Z::Array{T,2},Weights::Vector{Float64};
     M = length(Weights)
     q = Int(maximum(Z))
     plmalg = PlmAlg(method, verbose, epsconv, maxit)
-    plmvar = AttPlmVar(N, M, d, q, H, lambda, Z, Weights) 
+    plmvar = AttPlmVar(N, M, d, q, H, lambda, Z, Weights, dd = dd) 
     
     parameters, pslike, elapstime, numevals, ret = minimize_pl(plmalg, plmvar,initx0=initx0)
     Q = reshape(parameters[1:H*d*N],H,d,N)
@@ -69,7 +70,7 @@ function minimize_pl(alg::PlmAlg, var::AttPlmVar;
 end
 
 function pl_and_grad!(grad::Vector{Float64}, x::Vector{Float64}, plmvar::AttPlmVar)
-    @extract plmvar : H N M d q Z lambda weights = W delta wdelta
+    @extract plmvar : H N M d dd q Z lambda weights = W delta wdelta
     
     numpar = N*(N-1)*q*q
     λ = lambda / numpar
@@ -92,7 +93,7 @@ function pl_and_grad!(grad::Vector{Float64}, x::Vector{Float64}, plmvar::AttPlmV
     grad .= 0.0
      
     Threads.@threads for site in 1:N 
-        pseudologlikelihood[site], reg[site], big_scra_grad[site,:] = update_QK_site!(grad, Z, view(Q,:,:,site), K, V, site, weights, λ, data,view(delta,site,:,:),wdelta)
+        pseudologlikelihood[site], reg[site], big_scra_grad[site,:] = update_QK_site!(grad, Z, view(Q,:,:,site), K, V, site, weights, λ, data,view(delta,site,:,:),wdelta,dd)
     end
     
     grad[H*N*d+1 : 2*H*N*d] = sum(big_scra_grad, dims=1) 
@@ -106,12 +107,12 @@ function pl_and_grad!(grad::Vector{Float64}, x::Vector{Float64}, plmvar::AttPlmV
     return total_pslikelihood
 end
 
-function update_QK_site!(grad::Vector{Float64}, Z::Array{Int,2}, Q::AbstractArray{Float64,2}, K::Array{Float64,3}, V::Array{Float64,3}, site::Int, weights::Vector{Float64}, lambda::Float64, data::AttComputationQuantities, delta, wdelta)
+function update_QK_site!(grad::Vector{Float64}, Z::Array{Int,2}, Q::AbstractArray{Float64,2}, K::Array{Float64,3}, V::Array{Float64,3}, site::Int, weights::Vector{Float64}, lambda::Float64, data::AttComputationQuantities, delta, wdelta, dd)
     H,d = size(Q)
     H,q,_ = size(V)
     N,_ = size(Z) 
     @tullio sf[j, h] := Q[h,d]*K[h,d,j]
-    sf = softmax(sf./sqrt(d),dims=1) 
+    sf = softmax(sf./sqrt(dd),dims=1) 
     view(data.sf,:,site,:) .= sf
 
     @tullio J_site[j,a,b] := sf[j,h]*V[h,a,b]
@@ -138,7 +139,7 @@ function update_QK_site!(grad::Vector{Float64}, Z::Array{Int,2}, Q::AbstractArra
     @inbounds for counter in (site-1)*H*d + 1 : site*H*d 
         h,y,_ = counter_to_index(counter, N, d, q, H)
         @tullio  innersum = K[$h,$y,j]*sf[j,$h] #order N
-        @tullio  outersum[j] = (K[$h,$y,j]*sf[j,$h] - sf[j,$h]*innersum)/sqrt(d) #order N
+        @tullio  outersum[j] = (K[$h,$y,j]*sf[j,$h] - sf[j,$h]*innersum)/sqrt(dd) #order N
         @tullio  scra = fact[j,$h]*outersum[j] #order N
         @tullio  ∇reg =  J_site[j,a,b]*V[$h,a,b]*outersum[j] #order Nq^2
         grad[counter] = -scra + 2*lambda*∇reg 
@@ -151,7 +152,7 @@ function update_QK_site!(grad::Vector{Float64}, Z::Array{Int,2}, Q::AbstractArra
     scra_grad = []
     @inbounds for counter in H*N*d+1:2*H*N*d
         h,y,x = counter_to_index(counter, N, d, q, H) #h, lower dim, position
-        @tullio scra[j] = Q[$h,$y]*(sf[j,$h]*(x==j) - sf[j,$h]*sf[$x,$h])/sqrt(d) #order N^2
+        @tullio scra[j] = Q[$h,$y]*(sf[j,$h]*(x==j) - sf[j,$h]*sf[$x,$h])/sqrt(dd) #order N^2
         @tullio scra2 = scra[j]*fact[j,$h] #order N^2
         @tullio scra1[a,b] = scra[j]*J_site[j,a,b] #order N^2q^2
         @tullio ∇reg = scra1[a,b]*V[$h,a,b] #order q^2
