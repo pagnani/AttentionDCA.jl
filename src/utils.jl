@@ -187,3 +187,13 @@ end
 function L2reg(out::AttPlmOut, lambda) 
     return L2reg(out.Q::AbstractArray{Float64,3},out.K::AbstractArray{Float64,3},out.V::AbstractArray{Float64,3}, lambda)
 end
+
+function L2reg(J::AbstractArray{Float64,4}, lambda)
+    N,N,q,q = size(J)
+    numpar = N*(N-1)*q*q
+    l2 = L2Tensor(J)
+
+    λ = lambda / numpar
+    return λ*l2
+
+end
