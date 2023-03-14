@@ -21,4 +21,5 @@ include("attention.jl")
 include("ar.jl")
 include("oldar.jl")
 # include("newar.jl")
+include("localfields.jl")
 end

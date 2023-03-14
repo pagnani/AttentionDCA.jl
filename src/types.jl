@@ -42,6 +42,31 @@ function Base.show(io::IO, AttPlmVar::AttPlmVar)
 end
 
 
+struct FieldAttPlmVar
+    N::Int
+    M::Int
+    d::Int
+    dd::Float64
+    q::Int  
+    q2::Int
+    H::Int
+    lambdaJ::Float64
+    lambdaH::Float64
+    Z::Array{Int,2} #MSA
+    W::Array{Float64,1} #weigths
+    delta::Array{Int,3}
+    wdelta::Array{Float64,3}
+    function FieldAttPlmVar(N,M,d,q,H,lambdaJ,lambdaH,Z,Weigths; dd = Float64(d))
+        
+        @tullio delta[j,m,a] := Int(Z[j,m]==a) (a in 1:q)
+        @tullio wdelta[j,m,a] := Weigths[m]*delta[j,m,a]
+
+        new(N,M,d,dd,q,q*q,H,lambdaJ,lambdaH,Z,Weigths,delta,wdelta)
+    end
+end
+
+
+
 struct AttPlmOut
     Q::Array{Float64,3}
     K::Array{Float64,3}
@@ -54,6 +79,14 @@ function Base.show(io::IO, AttPlmOut::AttPlmOut)
     H,d,N = size(Q)
     H,q,q = size(V) 
     print(io,"AttPlmOut: \nsize(Q)=[$H,$d,$N]\nsize(K)=[$H,$d,$N]\nsize(V)=[$H,$q,$q]\npslike=$(pslike)")
+end
+
+struct FieldAttPlmOut
+    Q::Array{Float64,3}
+    K::Array{Float64,3}
+    V::Array{Float64,3}
+    F::Array{Float64,2}
+    pslike::Union{Vector{Float64},Float64}
 end
 
 

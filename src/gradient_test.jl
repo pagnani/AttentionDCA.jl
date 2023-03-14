@@ -187,3 +187,30 @@ function likelihood(Z,Q,K,V,lambda,weights; dd = size(Q,2))
     # return pl, J, mat_ene, lge, pl-reg, reg
    return pl
 end 
+
+
+function fieldlikelihood(Z,Q,K,V,F,lambdaJ, lambdaH, weights; dd = size(Q,2))
+    H,d = size(Q)
+    H,q,_ = size(V)
+    N,M = size(Z)
+    numpar = N*(N-1)*q*q
+    # numpar = 1.0
+    λJ = lambdaJ/numpar
+    λH = lambdaH/(N*q)
+
+    @tullio sf[i, j, h] := Q[h,d,i]*K[h,d,j]
+    sf = softmax_notinplace(sf./sqrt(dd),dims=2) 
+    
+    @tullio J[i,j,a,b] := sf[i,j,h]*V[h,a,b]*(j!=i)
+   
+    @tullio _mat_ene[a,r,m] := J[r,j,a,Z[j,m]] 
+    @tullio mat_ene[a,r,m] := _mat_ene[a,r,m] + F[a,r]
+    lge = logsumexp(mat_ene,dims=1)[1,:,:]
+
+    @tullio pl = weights[m]*(mat_ene[Z[r,m],r,m] - lge[r,m])
+    pl = -1*pl
+    reg = λJ*L2Tensor(J) + λH*L2Tensor(F) 
+    pl = pl + reg
+    println(pl," ",reg)
+   return pl
+end

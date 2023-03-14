@@ -3,6 +3,12 @@ function optimfunwrapper(g::Vector,x::Vector, var::AttPlmVar)
     return pl_and_grad!(g, x, var)
 end
 
+function fieldoptimfunwrapper(g::Vector,x::Vector, var::FieldAttPlmVar)
+    g === nothing && (g = zeros(Float64, length(x)))
+    return fieldpl_and_grad!(g, x, var)
+end
+
+
 function att_param(r,N;q=21)
     L = number_plm(N,q=q)
     d = sqrt(q^4 + 8*N*L*r) - q^2
