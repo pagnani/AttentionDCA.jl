@@ -2,6 +2,7 @@ function attdca(Z::Array{T,2},Weights::Vector{Float64};
     H::Int = 32,
     d::Int = 20,
     dd = d,
+    normalise_lambda = true,
     initx0 = nothing,
     min_separation::Int=6,
     theta=:auto,
@@ -14,11 +15,20 @@ function attdca(Z::Array{T,2},Weights::Vector{Float64};
     all(x -> x > 0, Weights) || throw(DomainError("vector W should normalized and with all positive elements"))
     isapprox(sum(Weights), 1) || throw(DomainError("sum(W) ≠ 1. Consider normalizing the vector W"))
     
+    
+
     N, M = size(Z)
     M = length(Weights)
     q = Int(maximum(Z))
+    
+    λ = if normalise_lambda
+        lambda/(N*(N-1)*q*q)
+    else
+        lambda 
+    end
+    
     plmalg = PlmAlg(method, verbose, epsconv, maxit)
-    plmvar = AttPlmVar(N, M, d, q, H, lambda, Z, Weights, dd = dd) 
+    plmvar = AttPlmVar(N, M, d, q, H, λ, Z, Weights, dd = dd) 
     
     parameters, pslike, elapstime, numevals, ret = minimize_pl(plmalg, plmvar,initx0=initx0)
     Q = reshape(parameters[1:H*d*N],H,d,N)
@@ -58,7 +68,7 @@ function minimize_pl(alg::PlmAlg, var::AttPlmVar;
     xtol_abs!(opt, alg.epsconv)
     ftol_rel!(opt, alg.epsconv)
     maxeval!(opt, alg.maxit)
-    min_objective!(opt, (x, g) -> optimfunwrapper(g,x, var))
+    min_objective!(opt, (x, g) -> optimfunwrapper(g,x,var))
     elapstime = @elapsed  (minf, minx, ret) = optimize(opt, x0)
     numevals = opt.numevals
     alg.verbose && @printf("pl = %.4f\t time = %.4f\t", minf, elapstime)
@@ -70,10 +80,8 @@ function minimize_pl(alg::PlmAlg, var::AttPlmVar;
 end
 
 function pl_and_grad!(grad::Vector{Float64}, x::Vector{Float64}, plmvar::AttPlmVar)
-    @extract plmvar : H N M d dd q Z lambda weights = W delta wdelta
     
-    numpar = N*(N-1)*q*q
-    λ = lambda / numpar
+    @extract plmvar : H N M d dd q Z λ = lambda weights = W delta wdelta
 
     L = 2*H*N*d + H*q*q 
     L == length(x) || error("Wrong dimension of parameter vector")

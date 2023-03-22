@@ -113,7 +113,7 @@ function compute_actualPPV(filestruct;cutoff=8,min_separation=6)
     
 end
 
-function compute_PPV(Out::AttPlmOut,filestruct)
+function compute_PPV(Out::Union{AttPlmOut,FieldAttPlmOut},filestruct)
     @extract Out: Q K V
     
     dist = compute_residue_pair_dist(filestruct)
@@ -121,14 +121,15 @@ function compute_PPV(Out::AttPlmOut,filestruct)
     return map(x->x[4], compute_referencescore(_score, dist))
 
 end 
-function compute_PPV(Out::FieldAttPlmOut,filestruct)
-    @extract Out: Q K V
-    
-    dist = compute_residue_pair_dist(filestruct)
-    _score = score(Q, K, V) 
-    return map(x->x[4], compute_referencescore(_score, dist))
 
-end 
+# function compute_PPV(Out::FieldAttPlmOut,filestruct)
+#     @extract Out: Q K V
+    
+#     dist = compute_residue_pair_dist(filestruct)
+#     _score = score(Q, K, V) 
+#     return map(x->x[4], compute_referencescore(_score, dist))
+
+# end 
 
 function compute_PPV(score::Vector{Tuple{Int,Int,Float64}}, filestruct::String)
     dist = compute_residue_pair_dist(filestruct)
