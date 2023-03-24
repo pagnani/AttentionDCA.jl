@@ -41,7 +41,6 @@ function Base.show(io::IO, AttPlmVar::AttPlmVar)
     print(io,"AttPlmVar: \nN=$N\nM=$M\nq=$q\nH=$H\nd=$d\nλ=$(lambda)")
 end
 
-
 struct FieldAttPlmVar
     N::Int
     M::Int
@@ -65,7 +64,10 @@ struct FieldAttPlmVar
     end
 end
 
-
+function Base.show(io::IO, FieldAttPlmVar::FieldAttPlmVar)
+    @extract FieldAttPlmVar: N M d q H lambdaJ lambdaH
+    print(io,"FieldAttPlmVar: \nN=$N\nM=$M\nq=$q\nH=$H\nd=$d\nλJ=$(lambdaJ)\nλH=$(lambdaH)")
+end
 
 struct AttPlmOut
     Q::Array{Float64,3}
@@ -89,20 +91,38 @@ struct FieldAttPlmOut
     pslike::Union{Vector{Float64},Float64}
 end
 
+struct AttOut
+    Q::Array{Float64,3}
+    K::Array{Float64,3}
+    V::Array{Float64,3}
+    F::Union{Array{Float64,2},Nothing}
+    pslike::Union{Vector{Float64},Float64}
+end
 
-struct OldAttComputationQuantities 
-    sf::Array{Float64,3}
-    J::Array{Float64,4}
-    mat::Array{Float64,4}
-    fact::Array{Float64,3}
-    function OldAttComputationQuantities(N,H,q)
-        sf = zeros(Float64, H, N, N)
-        J = zeros(Float64, N, N, q, q)
-        mat = zeros(Float64, N, q, q, N)
-        fact = zeros(Float64, N, H, N)
-        new(sf,J,mat,fact)
+function Base.show(io::IO, AttOut::AttOut)
+    @extract AttOut: Q K V F pslike
+    H,d,N = size(Q)
+    H,q,q = size(V) 
+    if F === nothing 
+        print(io,"AttOut: \nsize(Q)=[$H,$d,$N]\nsize(K)=[$H,$d,$N]\nsize(V)=[$H,$q,$q]\npslike=$(pslike)\nNOFIELDS")
+    else       
+        print(io,"AttOut: \nsize(Q)=[$H,$d,$N]\nsize(K)=[$H,$d,$N]\nsize(V)=[$H,$q,$q]\nsize(F)=[$q,$N]\npslike=$(pslike)\nFIELDS")
     end
 end
+
+# struct OldAttComputationQuantities 
+#     sf::Array{Float64,3}
+#     J::Array{Float64,4}
+#     mat::Array{Float64,4}
+#     fact::Array{Float64,3}
+#     function OldAttComputationQuantities(N,H,q)
+#         sf = zeros(Float64, H, N, N)
+#         J = zeros(Float64, N, N, q, q)
+#         mat = zeros(Float64, N, q, q, N)
+#         fact = zeros(Float64, N, H, N)
+#         new(sf,J,mat,fact)
+#     end
+# end
 
 struct AttComputationQuantities 
     sf::Array{Float64,3}
@@ -115,7 +135,3 @@ struct AttComputationQuantities
         new(sf,J,mat)
     end
 end
-
-
-        
-

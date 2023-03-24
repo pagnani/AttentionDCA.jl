@@ -113,7 +113,7 @@ function compute_actualPPV(filestruct;cutoff=8,min_separation=6)
     
 end
 
-function compute_PPV(Out::Union{AttPlmOut,FieldAttPlmOut},filestruct)
+function compute_PPV(Out::Union{AttPlmOut,FieldAttPlmOut, AttOut},filestruct)
     @extract Out: Q K V
     
     dist = compute_residue_pair_dist(filestruct)

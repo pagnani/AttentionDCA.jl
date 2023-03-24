@@ -1,13 +1,22 @@
-function optimfunwrapper(g::Vector,x::Vector, var::AttPlmVar)
+# function optimfunwrapper(g::Vector,x::Vector, var::AttPlmVar)
+#     g === nothing && (g = zeros(Float64, length(x)))
+#     return pl_and_grad!(g, x, var)
+# end
+
+# function fieldoptimfunwrapper(g::Vector,x::Vector, var::FieldAttPlmVar)
+#     g === nothing && (g = zeros(Float64, length(x)))
+#     return pl_and_grad!(g, x, var)
+# end
+
+function optimfunwrapper(g::Vector,x::Vector, var::Union{AttPlmVar,FieldAttPlmVar})
     g === nothing && (g = zeros(Float64, length(x)))
     return pl_and_grad!(g, x, var)
 end
 
-function fieldoptimfunwrapper(g::Vector,x::Vector, var::FieldAttPlmVar)
+function ar_optimfunwrapperfactored(g::Vector{Float64},x::Vector{Float64}, var::Union{AttPlmVar, FieldAttPlmVar})
     g === nothing && (g = zeros(Float64, length(x)))
-    return fieldpl_and_grad!(g, x, var)
+    return ar_pl_and_grad!(g, x, var)
 end
-
 
 function att_param(r,N;q=21)
     L = number_plm(N,q=q)
@@ -121,7 +130,7 @@ function reshapetensor(J::Array{Float64, 4}, N::Int, q)
     return newJ
 end
 
-function computep0(var::AttPlmVar)
+function computep0(var::Union{AttPlmVar,FieldAttPlmVar})
     W = var.W
     Z = var.Z 
     q = var.q 
@@ -191,6 +200,9 @@ end
 
 
 function L2reg(out::AttPlmOut, lambda) 
+    return L2reg(out.Q::AbstractArray{Float64,3},out.K::AbstractArray{Float64,3},out.V::AbstractArray{Float64,3}, lambda)
+end
+function L2reg(out::AttOut, lambda) 
     return L2reg(out.Q::AbstractArray{Float64,3},out.K::AbstractArray{Float64,3},out.V::AbstractArray{Float64,3}, lambda)
 end
 

@@ -11,15 +11,13 @@ using Distributions: wsample
 using ExtractMacro
 using ArDCA
 
-export AttPlmOut, AttPlmVar, attdca, attardca, score, compute_PPV, L2reg
+export AttOut, AttPlmVar, FieldAttPlmVar, attentiondca, arattentiondca, score, compute_PPV, L2reg
 
 include("types.jl")
 include("utils.jl")
 include("dcascore.jl")
 include("gradient_test.jl")
 include("attention.jl")
-include("ar.jl")
-include("oldar.jl")
-# include("newar.jl")
-include("localfields.jl")
+include("autoregressive.jl")
+
 end
