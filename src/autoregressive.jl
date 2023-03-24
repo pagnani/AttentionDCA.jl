@@ -49,7 +49,7 @@ function arattentiondca(Z::Array{T,2},Weights::Vector{Float64};
     
     J_reshaped = reshapetensor(J,N,q)
     p0 = computep0(plmvar)
-    H = λH !== nothing ? [F[i,:] for i in 1:q] : [zeros(q) for _ in 1:N-1]
+    H = λH !== nothing ? [F[:,i] for i in 2:N] : [zeros(q) for _ in 1:N-1]
 
     return ArNet(arvar.idxperm, p0, J_reshaped,H), arvar, AttOut(Q,K,V,F,pslike)
 
