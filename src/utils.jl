@@ -1,13 +1,3 @@
-# function optimfunwrapper(g::Vector,x::Vector, var::AttPlmVar)
-#     g === nothing && (g = zeros(Float64, length(x)))
-#     return pl_and_grad!(g, x, var)
-# end
-
-# function fieldoptimfunwrapper(g::Vector,x::Vector, var::FieldAttPlmVar)
-#     g === nothing && (g = zeros(Float64, length(x)))
-#     return pl_and_grad!(g, x, var)
-# end
-
 function optimfunwrapper(g::Vector,x::Vector, var::Union{AttPlmVar,FieldAttPlmVar})
     g === nothing && (g = zeros(Float64, length(x)))
     return pl_and_grad!(g, x, var)
@@ -24,37 +14,6 @@ function att_param(r,N;q=21)
     d = d/(2*N)
     return L, d
 end 
-
-
-
-# function counter_to_index(l::Int, N::Int, d:: Int, Q::Int, H::Int; verbose::Bool=false)
-#     h::Int = 0
-#     if l <= H*N*d
-#         h = ceil(l/(d*N))
-#         l = l-(d*N)*(h-1)
-#         m::Int = ceil(l/N)
-#         i::Int = l-N*(m-1)
-#         verbose && println("i = $i \nm = $m \nh = $h")
-#         return i,m,h
-#     elseif H*N*d < l <= 2*H*N*d 
-#         l-=d*N*H
-#         h = ceil(l/(d*N))
-#         l-=(d*N)*(h-1)
-#         n::Int = ceil(l/N)
-#         j::Int = l-N*(n-1)
-#         verbose && println("j = $j \nn = $n \nh = $h")
-#         return j,n,h
-#     else
-#         l-=2*N*d*H
-#         h = ceil(l/(Q*Q))
-#         l-=(Q*Q)*(h-1)
-#         b::Int = ceil(l/Q)
-#         a::Int = l-Q*(b-1)
-#         verbose && println("a = $a \nb = $b \nh = $h \n")
-#         return a, b, h 
-#     end
-# end
-
 
 function counter_to_index(l::Int, N::Int, d:: Int, Q::Int, H::Int; verbose::Bool=false)
     h::Int = 0
@@ -167,7 +126,6 @@ function entropy(Z::AbstractArray{Ti,2}, W::AbstractVector{Float64}) where {Ti<:
     S
 end
 
-
 softmax(x::AbstractArray{T}; dims = 1) where {T} = softmax!(similar(x, float(T)), x; dims)
 
 softmax!(x::AbstractArray; dims = 1) = softmax!(x, x; dims)
@@ -198,7 +156,6 @@ function L2reg(Q::AbstractArray{Float64,3},K::AbstractArray{Float64,3},V::Abstra
     return λ*l2
 end
 
-
 function L2reg(out::AttPlmOut, lambda) 
     return L2reg(out.Q::AbstractArray{Float64,3},out.K::AbstractArray{Float64,3},out.V::AbstractArray{Float64,3}, lambda)
 end
@@ -213,5 +170,5 @@ function L2reg(J::AbstractArray{Float64,4}, lambda)
 
     λ = lambda / numpar
     return λ*l2
-
 end
+

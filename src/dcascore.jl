@@ -122,17 +122,12 @@ function compute_PPV(Out::Union{AttPlmOut,FieldAttPlmOut, AttOut},filestruct)
 
 end 
 
-# function compute_PPV(Out::FieldAttPlmOut,filestruct)
-#     @extract Out: Q K V
-    
-#     dist = compute_residue_pair_dist(filestruct)
-#     _score = score(Q, K, V) 
-#     return map(x->x[4], compute_referencescore(_score, dist))
-
-# end 
-
 function compute_PPV(score::Vector{Tuple{Int,Int,Float64}}, filestruct::String)
     dist = compute_residue_pair_dist(filestruct)
     return map(x->x[4], compute_referencescore(score, dist))
 end
 
+function compute_PPV(arnet::ArDCA.ArNet, arvar::ArDCA.ArVar, seqid::Int64, filestruct::String; pc::Float64=0.1,min_separation::Int=1)
+    score = ArDCA.epistatic_score(arnet, arvar, seqid, pc = pc, min_separation = min_separation)
+    return compute_PPV(score, filestruct)
+end
