@@ -41,7 +41,7 @@ function attentiondca(Z::Array{T,2}, Weights::Vector{Float64};
     V = reshape(parameters[2*H*d*N+1:2*H*N*d + H*q*q],H,q,q)
     F = λH !== nothing ? reshape(parameters[2*H*N*d + H*q*q + 1 : end], q,N) : nothing
 
-    return AttOut(Q,K,V,F,pslike), elapstime, numevals, ret
+    return AttOut(Q,K,V,F,pslike), plmvar, elapstime, numevals, ret
 end
 
 function attentiondca(filename::String;
