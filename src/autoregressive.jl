@@ -121,12 +121,6 @@ function ar_minimizepl(alg::PlmAlg, var::FieldAttPlmVar;
 
 end
 
-
-function ar_optimfunwrapperfactored(g::Vector{Float64},x::Vector{Float64}, var::Union{AttPlmVar, FieldAttPlmVar})
-    g === nothing && (g = zeros(Float64, length(x)))
-    return ar_pl_and_grad!(g, x, var)
-end
-
 function ar_pl_and_grad!(grad::Vector{Float64}, x::Vector{Float64}, plmvar::FieldAttPlmVar)
     @extract plmvar : N M H d dd q Z λJ = lambdaJ λH = lambdaH weights = W delta wdelta
     L = 2*H*N*d + H*q*q + N*q
