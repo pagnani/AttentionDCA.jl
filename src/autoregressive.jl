@@ -1,3 +1,6 @@
+#Forse dovrei non imparare il primo field, metterlo a zero sempre e poi quando creo H da mettere 
+#dentro arnet scarto il primo
+
 function arattentiondca(Z::Array{T,2},Weights::Vector{Float64};
     version::Symbol = :NOFIELD,
     H::Int = 32,
@@ -5,8 +8,8 @@ function arattentiondca(Z::Array{T,2},Weights::Vector{Float64};
     dd::Real = d, 
     initx0::Union{Nothing, Vector{Float64}} = nothing,
     lambdaJ::Real=0.01,
-    lambdaH::Union{Nothing,Real} = version == :NOFIELD ? nothing : 0.01,
-    normalize_lambda::Bool = true,
+    lambdaF::Union{Nothing,Real} = version == :NOFIELD ? nothing : 0.01,
+    normalize_lambda::Bool = false,
     epsconv::Real=1.0e-5,
     maxit::Int=1000,
     verbose::Bool=true,
@@ -19,29 +22,29 @@ function arattentiondca(Z::Array{T,2},Weights::Vector{Float64};
     all(x -> x > 0, Weights) || error("vector W should normalized and with all positive elements")
     isapprox(sum(Weights), 1) || error("sum(W) ≠ 1. Consider normalizing the vector W")
     
-    version = lambdaH !== nothing ? :FIELD : :NOFIELD
+    version = lambdaF !== nothing ? :FIELD : :NOFIELD
 
     N, M = size(Z)
     q = Int(maximum(Z))
 
     λJ = normalize_lambda ? lambdaJ/(N*(N-1)*q*q) : lambdaJ
-    if lambdaH !== nothing
-        λH = normalize_lambda ? lambdaH/(N*q) : lambdaH
+    if lambdaF !== nothing
+        λF = normalize_lambda ? lambdaF/(N*q) : lambdaF
     else 
-        λH = nothing
+        λF = nothing
     end
 
     plmalg = PlmAlg(method, verbose, epsconv, maxit)
     
-    plmvar = λH === nothing ? AttPlmVar(N, M, d, q, H, λJ, Z, Weights, dd = dd) : FieldAttPlmVar(N, M, d, q, H, λJ, λH, Z, Weights, dd = dd)
-    arvar = λH === nothing ? ArVar(N,M,q,lambdaJ,0.0,Z,Weights,permorder) : ArVar(N,M,q,lambdaJ,lambdaH,Z,Weights,permorder)
+    plmvar = λF === nothing ? AttPlmVar(N, M, d, q, H, λJ, Z, Weights, dd = dd) : FieldAttPlmVar(N, M, d, q, H, λJ, λF, Z, Weights, dd = dd)
+    arvar = λF === nothing ? ArVar(N,M,q,lambdaJ,0.0,Z,Weights,permorder) : ArVar(N,M,q,lambdaJ,lambdaF,Z,Weights,permorder)
 
     parameters, pslike = ar_minimizepl(plmalg, plmvar, initx0=initx0)
 
     Q = reshape(parameters[1:H*d*N],H,d,N)
     K = reshape(parameters[H*d*N+1:2*H*d*N],H,d,N) 
     V = reshape(parameters[2*H*d*N+1:2*H*N*d + H*q*q],H,q,q)
-    F = λH !== nothing ? reshape(parameters[2*H*N*d + H*q*q + 1 : end], q,N) : nothing
+    F = λF !== nothing ? reshape(parameters[2*H*N*d + H*q*q + 1 : end], q,N) : nothing
 
     @tullio W[h, i, j] := Q[h,d,i]*K[h,d,j]
     sf = softmax(W./sqrt(dd),dims=3) 
@@ -49,7 +52,7 @@ function arattentiondca(Z::Array{T,2},Weights::Vector{Float64};
     
     J_reshaped = reshapetensor(J,N,q)
     p0 = computep0(plmvar)
-    H = λH !== nothing ? [F[:,i] for i in 2:N] : [zeros(q) for _ in 1:N-1]
+    H = λF !== nothing ? [F[:,i] for i in 2:N] : [zeros(q) for _ in 1:N-1]
 
     return ArNet(arvar.idxperm, p0, J_reshaped,H), arvar, AttOut(Q,K,V,F,pslike)
 
@@ -122,7 +125,7 @@ function ar_minimizepl(alg::PlmAlg, var::FieldAttPlmVar;
 end
 
 function ar_pl_and_grad!(grad::Vector{Float64}, x::Vector{Float64}, plmvar::FieldAttPlmVar)
-    @extract plmvar : N M H d dd q Z λJ = lambdaJ λH = lambdaH weights = W delta wdelta
+    @extract plmvar : N M H d dd q Z λJ = lambdaJ λF = lambdaF weights = W delta wdelta
     L = 2*H*N*d + H*q*q + N*q
     L == length(x) || error("Wrong dimension of parameter vector")
     L == length(grad) || error("Wrong dimension of gradient vector")
@@ -142,10 +145,10 @@ function ar_pl_and_grad!(grad::Vector{Float64}, x::Vector{Float64}, plmvar::Fiel
     grad .= 0.0
 
     Threads.@threads for site in 1:N 
-        pseudologlikelihood[site], reg[site], big_scra_grad[site,:] = ar_update_QK_site!(grad, Z, view(Q,:,:,site), K, V, view(F,:,site), site, weights, λJ, λH, data,view(delta,site,:,:),wdelta,dd)
+        pseudologlikelihood[site], reg[site], big_scra_grad[site,:] = ar_update_QK_site!(grad, Z, view(Q,:,:,site), K, V, view(F,:,site), site, weights, λJ, λF, data,view(delta,site,:,:),wdelta,dd)
     end
     grad[H*N*d+1 : 2*H*N*d] = sum(big_scra_grad, dims=1)
-    grad[2*H*N*d + H*q*q + 1:end] .+= 2*λH*x[2*H*N*d + H*q*q + 1 : end] 
+    grad[2*H*N*d + H*q*q + 1:end] .+= 2*λF*x[2*H*N*d + H*q*q + 1 : end] 
 
     ar_update_V!(grad, Q, V, λJ, data)
     
@@ -248,7 +251,7 @@ function ar_update_QK_site!(grad::Vector{Float64}, Z::Array{Int,2}, Q::AbstractA
 
 end
 
-function ar_update_QK_site!(grad::Vector{Float64}, Z::Array{Int,2}, Q::AbstractArray{Float64,2}, K::Array{Float64,3}, V::Array{Float64,3}, F::AbstractArray{Float64,1}, site::Int, weights::Vector{Float64}, lambdaJ::Float64, lambdaH::Float64, data::AttComputationQuantities, delta::AbstractArray{Int, 2}, wdelta::Array{Float64,3}, dd::Real)
+function ar_update_QK_site!(grad::Vector{Float64}, Z::Array{Int,2}, Q::AbstractArray{Float64,2}, K::Array{Float64,3}, V::Array{Float64,3}, F::AbstractArray{Float64,1}, site::Int, weights::Vector{Float64}, lambdaJ::Float64, lambdaF::Float64, data::AttComputationQuantities, delta::AbstractArray{Int, 2}, wdelta::Array{Float64,3}, dd::Real)
     H,d = size(Q)
     H,q,_ = size(V)
     N,M = size(Z) 
@@ -285,7 +288,7 @@ function ar_update_QK_site!(grad::Vector{Float64}, Z::Array{Int,2}, Q::AbstractA
         @tullio  ∇reg =  J_site[j,a,b]*V[$h,a,b]*outersum[j]
         grad[counter] = -scra + 2*lambdaJ*∇reg 
     end
-    reg = lambdaJ*L2Tensor(J_site) + lambdaH*L2Tensor(F)
+    reg = lambdaJ*L2Tensor(J_site) + lambdaF*L2Tensor(F)
 
     scra = zeros(Float64,N)
     scra1 = zeros(Float64,q,q)

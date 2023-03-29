@@ -156,9 +156,9 @@ function L2reg(Q::AbstractArray{Float64,3},K::AbstractArray{Float64,3},V::Abstra
     return λ*l2
 end
 
-function L2reg(out::AttPlmOut, lambda) 
-    return L2reg(out.Q::AbstractArray{Float64,3},out.K::AbstractArray{Float64,3},out.V::AbstractArray{Float64,3}, lambda)
-end
+# function L2reg(out::AttPlmOut, lambda) 
+#     return L2reg(out.Q::AbstractArray{Float64,3},out.K::AbstractArray{Float64,3},out.V::AbstractArray{Float64,3}, lambda)
+# end
 function L2reg(out::AttOut, lambda) 
     return L2reg(out.Q::AbstractArray{Float64,3},out.K::AbstractArray{Float64,3},out.V::AbstractArray{Float64,3}, lambda)
 end

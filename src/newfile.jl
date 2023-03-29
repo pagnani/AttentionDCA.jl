@@ -1,11 +1,12 @@
-function attentiondca(Z::Array{T,2}, Weights::Vector{Float64};
+function my_attentiondca(Z::Array{T,2}, Weights::Vector{Float64};
     version::Symbol = :NOFIELD,
     H::Int = 32,
     d::Int = 20, 
     dd::Real = d, 
     initx0::Union{Nothing, Vector{Float64}} = nothing,
-    lambdaJ::Union{Nothing,Real} = version == :NOFIELD ? 0.01 : 0.001, 
-    lambdaF::Union{Nothing,Real} = version == :NOFIELD ? nothing : 0.05,
+    lambdaQ::Real = version == :NOFIELD ? 0.01 : 0.01,
+    lambdaV::Real = version == :NOFIELD ? 0.01 : 0.01, 
+    lambdaF::Union{Nothing,Real} = version == :NOFIELD ? nothing : 0.01,
     normalize_lambda::Bool = false,
     epsconv::Real = 1.0e-5, 
     maxit::Int = 1000, 
@@ -24,9 +25,8 @@ function attentiondca(Z::Array{T,2}, Weights::Vector{Float64};
     N, M = size(Z)
     q = Int(maximum(Z))
 
-   
-
-    λJ = normalize_lambda ? lambdaJ/(N*(N-1)*q*q/2) : lambdaJ
+    λQ = normalize_lambda ? lambdaQ/(N*d*H) : lambdaQ
+    λV = normalize_lambda ? lambdaV/(q*q*H) : lambdaV
     if lambdaF !== nothing
         λF = normalize_lambda ? lambdaF/(N*q) : lambdaF
     else 
@@ -34,20 +34,21 @@ function attentiondca(Z::Array{T,2}, Weights::Vector{Float64};
     end
 
     plmalg = PlmAlg(method, verbose, epsconv, maxit)
-    plmvar = λF === nothing ? AttPlmVar(N, M, d, q, H, λJ, Z, Weights, dd = dd) : FieldAttPlmVar(N, M, d, q, H, λJ, λF, Z, Weights, dd = dd)
-    
-    parameters, pslike, elapstime, numevals, ret = minimize_pl(plmalg,plmvar,initx0=initx0)
+
+    plmvar = λF === nothing ? myAttPlmVar(N, M, d, q, H, λQ, λV, Z, Weights, dd = dd) : myFieldAttPlmVar(N, M, d, q, H, λQ, λV, λF, Z, Weights, dd = dd)
+    parameters, pslike, elapstime, numevals, ret = my_minimize_pl(plmalg, plmvar,initx0=initx0)
 
     Q = reshape(parameters[1:H*d*N],H,d,N)
     K = reshape(parameters[H*d*N+1:2*H*d*N],H,d,N) 
     V = reshape(parameters[2*H*d*N+1:2*H*N*d + H*q*q],H,q,q)
     F = λF !== nothing ? reshape(parameters[2*H*N*d + H*q*q + 1 : end], q,N) : nothing
     
-    info = Info(λJ,λF, numevals, elapstime, ret)
+    info = Info(λQ,λV,λF, numevals, elapstime, ret)
+    
     return AttOut(Q,K,V,F,pslike), info
 end
 
-function attentiondca(filename::String;
+function my_attentiondca(filename::String;
     theta::Union{Symbol,Real}=:auto,
     max_gap_fraction::Real=0.9,
     remove_dups::Bool=true,
@@ -55,10 +56,10 @@ function attentiondca(filename::String;
     
     time = @elapsed Weights, Z, N, M, q = ReadFasta(filename, max_gap_fraction, theta, remove_dups)
     println("preprocessing took $time seconds")
-    attentiondca(Z, Weights; kwds...)
+    my_attentiondca(Z, Weights; kwds...)
 end
 
-function minimize_pl(alg::PlmAlg, var::FieldAttPlmVar;
+function my_minimize_pl(alg::PlmAlg, var::myFieldAttPlmVar;
     initx0::Union{Nothing, Vector{Float64}} = nothing)
     
     @extract var : N H d q2 LL = 2*H*N*d + H*q2 + N*q
@@ -74,10 +75,10 @@ function minimize_pl(alg::PlmAlg, var::FieldAttPlmVar;
     xtol_abs!(opt, alg.epsconv)
     ftol_rel!(opt, alg.epsconv)
     maxeval!(opt, alg.maxit)
-    min_objective!(opt, (x, g) -> optimfunwrapper(g,x, var))
+    min_objective!(opt, (x, g) -> my_optimfunwrapper(g,x, var))
     elapstime = @elapsed  (minf, minx, ret) = optimize(opt, x0)
     numevals = opt.numevals
-    alg.verbose && @printf("pl = %.4f\t numevals = %i \t time = %.4f\t", minf,numevals,elapstime)
+    alg.verbose && @printf("pl = %.4f\t numevals = %i\t time = %.4f\t", minf,numevals,elapstime)
     alg.verbose && println("exit status = $ret")
     pl = minf
     parameters .= minx
@@ -85,7 +86,7 @@ function minimize_pl(alg::PlmAlg, var::FieldAttPlmVar;
     return parameters, pl, elapstime, numevals, ret
 end
 
-function minimize_pl(alg::PlmAlg, var::AttPlmVar;
+function my_minimize_pl(alg::PlmAlg, var::myAttPlmVar;
     initx0::Union{Nothing, Vector{Float64}} = nothing)
     
     @extract var : N H d q2 LL = 2*H*N*d + H*q2
@@ -101,7 +102,7 @@ function minimize_pl(alg::PlmAlg, var::AttPlmVar;
     xtol_abs!(opt, alg.epsconv)
     ftol_rel!(opt, alg.epsconv)
     maxeval!(opt, alg.maxit)
-    min_objective!(opt, (x, g) -> optimfunwrapper(g,x,var))
+    min_objective!(opt, (x, g) -> my_optimfunwrapper(g,x,var))
     elapstime = @elapsed  (minf, minx, ret) = optimize(opt, x0)
     numevals = opt.numevals
     alg.verbose && @printf("pl = %.4f\t numevals = %i \t time = %.4f\t", minf,numevals,elapstime)
@@ -112,10 +113,9 @@ function minimize_pl(alg::PlmAlg, var::AttPlmVar;
     return parameters, pl, elapstime, numevals, ret
 end
 
+function my_pl_and_grad!(grad::Vector{Float64}, x::Vector{Float64}, plmvar::myFieldAttPlmVar)
 
-function pl_and_grad!(grad::Vector{Float64}, x::Vector{Float64}, plmvar::FieldAttPlmVar)
-
-    @extract plmvar : H N M d dd q Z λJ = lambdaJ λF = lambdaF weights = W delta wdelta
+    @extract plmvar : H N M d dd q Z λQ = lambdaQ λV = lambdaV λF = lambdaF weights = W delta wdelta
     L = 2*H*N*d + H*q*q + N*q
     L == length(x) || error("Wrong dimension of parameter vector")
 
@@ -127,7 +127,6 @@ function pl_and_grad!(grad::Vector{Float64}, x::Vector{Float64}, plmvar::FieldAt
     F = reshape(x[2*H*N*d + H*q*q + 1 : end],q,N)
 
     pseudologlikelihood = zeros(Float64, N)
-    reg = zeros(Float64, N)
 
     data = AttComputationQuantities(N,H,q)
 
@@ -136,25 +135,27 @@ function pl_and_grad!(grad::Vector{Float64}, x::Vector{Float64}, plmvar::FieldAt
     grad .= 0.0
     
     Threads.@threads for site in 1:N 
-        pseudologlikelihood[site], reg[site], big_scra_grad[site,:]= update_QK_site!(grad, Z, view(Q,:,:,site), K, V, view(F,:,site),site, weights, λJ,λF, data,view(delta,site,:,:),wdelta,dd)
+        pseudologlikelihood[site], big_scra_grad[site,:]= my_update_QK_site!(grad, Z, view(Q,:,:,site), K, V, view(F,:,site),site, weights, data,view(delta,site,:,:),wdelta,dd)
     end
     
     grad[H*N*d+1 : 2*H*N*d] = sum(big_scra_grad, dims=1)
     
-    grad[2*H*N*d + H*q*q + 1:end] .+= 2*λF*x[2*H*N*d + H*q*q + 1 : end] 
+    my_update_V!(grad, Q, V, data)
 
-    update_V!(grad, Q, V, λJ, data)
+    grad[1:H*N*d] .+= 2*λQ*x[1:H*N*d]
+    grad[H*N*d+1 : 2*H*N*d] .+= 2*λQ*x[H*N*d+1 : 2*H*N*d]
+    grad[2*H*N*d+1:2*H*N*d + H*q*q] .+= 2*λV*x[2*H*N*d+1:2*H*N*d + H*q*q]
+    grad[2*H*N*d + H*q*q + 1 : end] .+= 2*λF*x[2*H*N*d + H*q*q + 1 : end]
     
-    regularisation = sum(reg)
+    regularisation = λQ*L2Tensor(Q) + λQ*L2Tensor(K) + λV*L2Tensor(V) + λF*L2Tensor(F)
     total_pslikelihood = sum(pseudologlikelihood) + regularisation
     println(total_pslikelihood," ",regularisation)
     return total_pslikelihood
 end
 
-function pl_and_grad!(grad::Vector{Float64}, x::Vector{Float64}, plmvar::AttPlmVar)
+function my_pl_and_grad!(grad::Vector{Float64}, x::Vector{Float64}, plmvar::myAttPlmVar)
     
-    @extract plmvar : H N M d dd q Z λ = lambda weights = W delta wdelta
-
+    @extract plmvar : H N M d dd q Z λQ = lambdaQ λV = lambdaV weights = W delta wdelta
     L = 2*H*N*d + H*q*q 
     L == length(x) || error("Wrong dimension of parameter vector")
     L == length(grad) || error("Wrong dimension of gradient vector")
@@ -164,37 +165,39 @@ function pl_and_grad!(grad::Vector{Float64}, x::Vector{Float64}, plmvar::AttPlmV
     V = reshape(x[2*H*N*d+1:end],H,q,q)
 
     pseudologlikelihood = zeros(Float64, N)
-    reg = zeros(Float64, N)
-
+    
     data = AttComputationQuantities(N,H,q)
 
     big_scra_grad = zeros(N,H*N*d)
 
     grad .= 0.0
-     
     Threads.@threads for site in 1:N 
-        pseudologlikelihood[site], reg[site], big_scra_grad[site,:] = update_QK_site!(grad, Z, view(Q,:,:,site), K, V, site, weights, λ, data,view(delta,site,:,:),wdelta,dd)
+        pseudologlikelihood[site], big_scra_grad[site,:] = my_update_QK_site!(grad, Z, view(Q,:,:,site), K, V, site, weights,data,view(delta,site,:,:),wdelta,dd)
     end
     
     grad[H*N*d+1 : 2*H*N*d] = sum(big_scra_grad, dims=1) 
 
-    update_V!(grad, Q, V, λ, data)
+    my_update_V!(grad, Q, V, data)
     
-    regularisation = sum(reg)
+    grad[1:H*N*d] .+= 2*λQ*x[1:H*N*d]
+    grad[H*N*d+1 : 2*H*N*d] .+= 2*λQ*x[H*N*d+1 : 2*H*N*d]
+    grad[2*H*N*d+1:end] .+= 2*λV*x[2*H*N*d+1:end]
+
+    regularisation = λQ*L2Tensor(Q) + λQ*L2Tensor(K) + λV*L2Tensor(V)
     total_pslikelihood = sum(pseudologlikelihood) + regularisation
     
     println(total_pslikelihood," ",regularisation)
     return total_pslikelihood
 end
 
-function update_QK_site!(grad::Vector{Float64}, Z::Array{Int,2}, Q::AbstractArray{Float64,2}, K::Array{Float64,3}, V::Array{Float64,3}, site::Int, weights::Vector{Float64}, lambda::Float64, data::AttComputationQuantities, delta::AbstractArray{Int, 2}, wdelta::Array{Float64,3}, dd::Real)
+function my_update_QK_site!(grad::Vector{Float64}, Z::Array{Int,2}, Q::AbstractArray{Float64,2}, K::Array{Float64,3}, V::Array{Float64,3}, site::Int, weights::Vector{Float64}, data::AttComputationQuantities, delta::AbstractArray{Int, 2}, wdelta::Array{Float64,3}, dd::Real)
+    
     H,d = size(Q)
     H,q,_ = size(V)
     N,_ = size(Z) 
     @tullio sf[j, h] := Q[h,d]*K[h,d,j]
     sf = softmax(sf./sqrt(dd),dims=1) 
     view(data.sf,:,site,:) .= sf
-
     @tullio J_site[j,a,b] := sf[j,h]*V[h,a,b]
     view(J_site,site,:,:) .= 0.0
     view(data.J,site,:,:,:) .= J_site 
@@ -215,36 +218,28 @@ function update_QK_site!(grad::Vector{Float64}, Z::Array{Int,2}, Q::AbstractArra
 
     @tullio fact[j,h] := mat[a,b,j]*V[h,a,b] #order HNq^2
     outersum = zeros(Float64, N)
-
     @inbounds for counter in (site-1)*H*d + 1 : site*H*d 
-        h,y,_ = counter_to_index(counter, N, d, q, H)
+        h,y,i = counter_to_index(counter, N, d, q, H)
         @tullio  innersum = K[$h,$y,j]*sf[j,$h] #order N
         @tullio  outersum[j] = (K[$h,$y,j]*sf[j,$h] - sf[j,$h]*innersum)/sqrt(dd) #order N
         @tullio  scra = fact[j,$h]*outersum[j] #order N
-        @tullio  ∇reg =  J_site[j,a,b]*V[$h,a,b]*outersum[j] #order Nq^2
-        grad[counter] = -scra + 2*lambda*∇reg 
+        grad[counter] = -scra
     end
-    reg = lambda*L2Tensor(J_site)
-
     
     scra = zeros(Float64,N)
-    scra1 = zeros(Float64,q,q)
     scra_grad = []
     @inbounds for counter in H*N*d+1:2*H*N*d
         h,y,x = counter_to_index(counter, N, d, q, H) #h, lower dim, position
         @tullio scra[j] = Q[$h,$y]*(sf[j,$h]*(x==j) - sf[j,$h]*sf[$x,$h])/sqrt(dd) #order N^2
         @tullio scra2 = scra[j]*fact[j,$h] #order N^2
-        @tullio scra1[a,b] = scra[j]*J_site[j,a,b] #order N^2q^2
-        @tullio ∇reg = scra1[a,b]*V[$h,a,b] #order q^2
-        push!(scra_grad, - scra2 + 2*lambda*∇reg)
+        push!(scra_grad, - scra2)
     end
 
-
-    return pl, reg, scra_grad
-
+    return pl, scra_grad
+    
 end
 
-function update_QK_site!(grad::Vector{Float64}, Z::Array{Int,2}, Q::AbstractArray{Float64,2}, K::Array{Float64,3}, V::Array{Float64,3}, F::AbstractArray{Float64,1}, site::Int, weights::Vector{Float64}, lambdaJ::Float64, lambdaF::Float64, data::AttComputationQuantities, delta::AbstractArray{Int, 2}, wdelta::Array{Float64,3}, dd::Real)
+function my_update_QK_site!(grad::Vector{Float64}, Z::Array{Int,2}, Q::AbstractArray{Float64,2}, K::Array{Float64,3}, V::Array{Float64,3}, F, site::Int, weights::Vector{Float64}, data::AttComputationQuantities, delta::AbstractArray{Int, 2}, wdelta::Array{Float64,3}, dd::Real)
     H,d = size(Q)
     H,q,_ = size(V)
     N,M = size(Z) 
@@ -277,26 +272,20 @@ function update_QK_site!(grad::Vector{Float64}, Z::Array{Int,2}, Q::AbstractArra
     outersum = zeros(Float64, N)
 
     @inbounds for counter in (site-1)*H*d + 1 : site*H*d 
-        h,y,_ = counter_to_index(counter, N, d, q, H)
+        h,y,i = counter_to_index(counter, N, d, q, H)
         @tullio  innersum = K[$h,$y,j]*sf[j,$h] #order N
         @tullio  outersum[j] = (K[$h,$y,j]*sf[j,$h] - sf[j,$h]*innersum)/sqrt(dd) #order N
         @tullio  scra = fact[j,$h]*outersum[j] #order N
-        @tullio  ∇reg =  J_site[j,a,b]*V[$h,a,b]*outersum[j] #order Nq^2
-        grad[counter] = -scra + 2*lambdaJ*∇reg 
+        grad[counter] = -scra
     end
-    reg = lambdaJ*L2Tensor(J_site) + lambdaF*L2Tensor(F)
-
     
     scra = zeros(Float64,N)
-    scra1 = zeros(Float64,q,q)
     scra_grad = []
     @inbounds for counter in H*N*d+1:2*H*N*d
         h,y,x = counter_to_index(counter, N, d, q, H) #h, lower dim, position
         @tullio scra[j] = Q[$h,$y]*(sf[j,$h]*(x==j) - sf[j,$h]*sf[$x,$h])/sqrt(dd) #order N^2
         @tullio scra2 = scra[j]*fact[j,$h] #order N^2
-        @tullio scra1[a,b] = scra[j]*J_site[j,a,b] #order N^2q^2
-        @tullio ∇reg = scra1[a,b]*V[$h,a,b] #order q^2
-        push!(scra_grad, - scra2 + 2*lambdaJ*∇reg)
+        push!(scra_grad, - scra2)
     end   
 
     
@@ -312,12 +301,12 @@ function update_QK_site!(grad::Vector{Float64}, Z::Array{Int,2}, Q::AbstractArra
     grad[2*H*N*d + H*q*q + q*(site-1) + 1 : 2*H*N*d + H*q*q + q*site] .= ∇field
 
 
-    return pl, reg, scra_grad
+    return pl, scra_grad
 
 end
 
-function update_V!(grad::Vector{Float64}, Q::Array{Float64,3}, V::Array{Float64,3}, lambda::Float64, data::AttComputationQuantities)
-
+function my_update_V!(grad::Vector{Float64}, Q::Array{Float64,3}, V::Array{Float64,3}, data::AttComputationQuantities)
+    
     H,d,N = size(Q)
     H,q,_ = size(V)
 
@@ -327,10 +316,14 @@ function update_V!(grad::Vector{Float64}, Q::Array{Float64,3}, V::Array{Float64,
     @inbounds for counter in 2*N*d*H+1:2*N*H*d + H*q*q
         h,a,b = counter_to_index(counter, N,d,q, H)
         @tullio scra[site] = data.mat[site,$a,$b,j]*data.sf[j,site,$h] #order N^2
-        @tullio ∇reg = data.J[i,j,$a,$b]*data.sf[j,i,$h] #order N^2
         
-        grad[counter] = -sum(scra) + 2*lambda*∇reg
+        grad[counter] = -sum(scra)
         
     end
     return
+end
+
+function my_optimfunwrapper(g::Vector,x::Vector, var::Union{myAttPlmVar,myFieldAttPlmVar})
+    g === nothing && (g = zeros(Float64, length(x)))
+    return my_pl_and_grad!(g, x, var)
 end
