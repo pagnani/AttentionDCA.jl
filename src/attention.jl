@@ -4,7 +4,7 @@ function attentiondca(Z::Array{T,2}, Weights::Vector{Float64};
     d::Int = 20, 
     dd::Real = d, 
     initx0::Union{Nothing, Vector{Float64}} = nothing,
-    lambdaJ::Union{Nothing,Real} = version == :NOFIELD ? 0.01 : 0.001, 
+    lambdaJ::Union{Nothing,Real} = version == :NOFIELD ? 0.001 : 0.001, 
     lambdaF::Union{Nothing,Real} = version == :NOFIELD ? nothing : 0.05,
     normalize_lambda::Bool = false,
     epsconv::Real = 1.0e-5, 
