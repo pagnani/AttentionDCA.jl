@@ -89,7 +89,7 @@ function compute_ranking(S::Matrix{Float64}, min_separation::Int = 6)
 end
 
 
-function compute_actualPPV(filestruct;cutoff=8,min_separation=6)
+function compute_actualPPV(filestruct;cutoff=8.0,min_separation=6)
     distances=readdlm(filestruct)
     L,_ = size(distances)
     l = 0

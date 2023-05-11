@@ -191,37 +191,37 @@ function update_QK_site!(grad::Vector{Float64}, Z::Array{Int,2}, Q::AbstractArra
     H,d = size(Q)
     H,q,_ = size(V)
     N,_ = size(Z) 
-    @tullio sf[j, h] := Q[h,d]*K[h,d,j]
+    @tullio sf[j, h] := Q[h,d]*K[h,d,j] #O(HNd)
     sf = softmax(sf./sqrt(dd),dims=1) 
     view(data.sf,:,site,:) .= sf
 
-    @tullio J_site[j,a,b] := sf[j,h]*V[h,a,b]
+    @tullio J_site[j,a,b] := sf[j,h]*V[h,a,b] #O(HNqq)
     view(J_site,site,:,:) .= 0.0
     view(data.J,site,:,:,:) .= J_site 
 
-    @tullio mat_ene[a,m] := J_site[j,a,Z[j,m]] #order NMq
+    @tullio mat_ene[a,m] := J_site[j,a,Z[j,m]] #O(NMq)
     partition = sumexp(mat_ene,dims=1) #partition function for each m ∈ 1:M 
 
-    @tullio probnew[m,a] := delta[m,a] - exp(mat_ene[a,m])/partition[m]
+    @tullio probnew[m,a] := delta[m,a] - exp(mat_ene[a,m])/partition[m] #O(Mq)
     lge = log.(partition) 
 
     Z_site = view(Z,site,:) 
-    @tullio pl = weights[m]*(mat_ene[Z_site[m],m] - lge[m]) #order M
+    @tullio pl = weights[m]*(mat_ene[Z_site[m],m] - lge[m]) #O(M)
     pl *= -1
 
-    @tullio mat[a,b,j] := wdelta[j,m,b]*probnew[m,a] (a in 1:q, b in 1:q)
+    @tullio mat[a,b,j] := wdelta[j,m,b]*probnew[m,a] (a in 1:q, b in 1:q) #O(NMqq)
     view(mat,:,:,site) .= 0.0 
     view(data.mat,site,:,:,:) .= mat
 
-    @tullio fact[j,h] := mat[a,b,j]*V[h,a,b] #order HNq^2
+    @tullio fact[j,h] := mat[a,b,j]*V[h,a,b] #O(HNqq)
     outersum = zeros(Float64, N)
 
     @inbounds for counter in (site-1)*H*d + 1 : site*H*d 
         h,y,_ = counter_to_index(counter, N, d, q, H)
-        @tullio  innersum = K[$h,$y,j]*sf[j,$h] #order N
-        @tullio  outersum[j] = (K[$h,$y,j]*sf[j,$h] - sf[j,$h]*innersum)/sqrt(dd) #order N
-        @tullio  scra = fact[j,$h]*outersum[j] #order N
-        @tullio  ∇reg =  J_site[j,a,b]*V[$h,a,b]*outersum[j] #order Nq^2
+        @tullio  innersum = K[$h,$y,j]*sf[j,$h] #O(N)
+        @tullio  outersum[j] = (K[$h,$y,j]*sf[j,$h] - sf[j,$h]*innersum)/sqrt(dd) #O(N)
+        @tullio  scra = fact[j,$h]*outersum[j] #O(N)
+        @tullio  ∇reg =  J_site[j,a,b]*V[$h,a,b]*outersum[j] #O(Nqq)
         grad[counter] = -scra + 2*lambda*∇reg 
     end
     reg = lambda*L2Tensor(J_site)
@@ -232,10 +232,10 @@ function update_QK_site!(grad::Vector{Float64}, Z::Array{Int,2}, Q::AbstractArra
     scra_grad = []
     @inbounds for counter in H*N*d+1:2*H*N*d
         h,y,x = counter_to_index(counter, N, d, q, H) #h, lower dim, position
-        @tullio scra[j] = Q[$h,$y]*(sf[j,$h]*(x==j) - sf[j,$h]*sf[$x,$h])/sqrt(dd) #order N^2
-        @tullio scra2 = scra[j]*fact[j,$h] #order N^2
-        @tullio scra1[a,b] = scra[j]*J_site[j,a,b] #order N^2q^2
-        @tullio ∇reg = scra1[a,b]*V[$h,a,b] #order q^2
+        @tullio scra[j] = Q[$h,$y]*(sf[j,$h]*(x==j) - sf[j,$h]*sf[$x,$h])/sqrt(dd) #O(N)
+        @tullio scra2 = scra[j]*fact[j,$h] #O(N)
+        @tullio scra1[a,b] = scra[j]*J_site[j,a,b] #O(Nqq)
+        @tullio ∇reg = scra1[a,b]*V[$h,a,b] #O(qq)
         push!(scra_grad, - scra2 + 2*lambda*∇reg)
     end
 
@@ -299,8 +299,6 @@ function update_QK_site!(grad::Vector{Float64}, Z::Array{Int,2}, Q::AbstractArra
         push!(scra_grad, - scra2 + 2*lambdaJ*∇reg)
     end   
 
-    
-    # @tullio ∇field[l] := -weights[m]*probnew[m,l]
     ∇field = zeros(Float64,q)
     for l in 1:q 
         for m in 1:M 
@@ -326,8 +324,8 @@ function update_V!(grad::Vector{Float64}, Q::Array{Float64,3}, V::Array{Float64,
     scra = zeros(Float64, N)
     @inbounds for counter in 2*N*d*H+1:2*N*H*d + H*q*q
         h,a,b = counter_to_index(counter, N,d,q, H)
-        @tullio scra[site] = data.mat[site,$a,$b,j]*data.sf[j,site,$h] #order N^2
-        @tullio ∇reg = data.J[i,j,$a,$b]*data.sf[j,i,$h] #order N^2
+        @tullio scra[site] = data.mat[site,$a,$b,j]*data.sf[j,site,$h] #O(NN)
+        @tullio ∇reg = data.J[i,j,$a,$b]*data.sf[j,i,$h] #O(NN)
         
         grad[counter] = -sum(scra) + 2*lambda*∇reg
         
