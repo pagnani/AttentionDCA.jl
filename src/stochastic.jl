@@ -78,7 +78,7 @@ function mytrainer(m,D,η,batch_size,n_epoch;
     N,_ = size(D[1])
     t = setup(Adam(η), m)
     
-    savefile != Nothing && (file = open(savefile,"a"))
+    savefile !== nothing && (file = open(savefile,"a"))
 
     for i in 1:n_epoch
         loader = DataLoader(D, batchsize = batch_size, shuffle = true)
