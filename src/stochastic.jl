@@ -41,7 +41,7 @@ function mytrainer(D,η,batch_size,n_epoch;
     d = 23, 
     init = rand, 
     structfile = "../ArDCAData/data/PF00014/PF00014_struct.dat",
-    savefile::Union{String, Nothing} = Nothing)
+    savefile::Union{String, Nothing} = nothing)
     
     N,_ = size(D[1])
     q = maximum(D[1])
@@ -49,7 +49,7 @@ function mytrainer(D,η,batch_size,n_epoch;
     m = (Q = init(H,d,N), K = init(H,d,N), V = init(H,q,q))
     t = setup(Adam(η), m)
 
-    savefile != Nothing && (file = open(savefile,"a"))
+    savefile !== nothing && (file = open(savefile,"a"))
     
     for i in 1:n_epoch
         loader = DataLoader(D, batchsize = batch_size, shuffle = true)
@@ -64,16 +64,16 @@ function mytrainer(D,η,batch_size,n_epoch;
         l = round(myloss(m.Q, m.K, m.V, D[1], D[2]),digits=5) 
         p = round((PPV[N]),digits=3)
         println("Epoch $i loss = $l \t PPV@L = $p \t First Error = $(findfirst(x->x!=1, PPV))")
-        println(file, "Epoch $i loss = $l \t PPV@L = $p \t First Error = $(findfirst(x->x!=1, PPV))")
+        savefile !== nothing && println(file, "Epoch $i loss = $l \t PPV@L = $p \t First Error = $(findfirst(x->x!=1, PPV))")
     end
 
-    savefile != Nothing && close(file)
+    savefile !== nothing && close(file)
     return m
 end
 
 function mytrainer(m,D,η,batch_size,n_epoch; 
     structfile = "../ArDCAData/data/PF00014/PF00014_struct.dat",
-    savefile::Union{String, Nothing} = Nothing)
+    savefile::Union{String, Nothing} = nothing)
 
     N,_ = size(D[1])
     t = setup(Adam(η), m)
@@ -94,10 +94,29 @@ function mytrainer(m,D,η,batch_size,n_epoch;
         l = round(myloss(m.Q, m.K, m.V, D[1], D[2]),digits=5) 
         p = round((PPV[N]),digits=3)
         println("Epoch $i loss = $l \t PPV@L = $p \t First Error = $(findfirst(x->x!=1, PPV))")
-        println(file, "Epoch $i loss = $l \t PPV@L = $p \t First Error = $(findfirst(x->x!=1, PPV))")
+        savefile !== nothing && println(file, "Epoch $i loss = $l \t PPV@L = $p \t First Error = $(findfirst(x->x!=1, PPV))")
     end
 
-    savefile != Nothing && close(file)
+    savefile !== nothing && close(file)
 
     return m
+end
+
+function readfile!(file)    
+    f = open(file, "r")
+
+    pslike = []
+    precision = []
+    firsterror = []
+
+    for line in eachline(file)
+        a = split(line)
+        push!(pslike, parse(Float64,a[5]))
+        push!(precision, parse(Float64,a[8]))
+        push!(firsterror, parse(Int,a[end]))
+    end
+
+    close(f)
+
+    return pslike, precision, firsterror
 end
