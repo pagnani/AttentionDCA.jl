@@ -210,10 +210,10 @@ function likelihood(Z,Q,K,V,lambda,weights; dd = size(Q,2))
 
     @tullio pl = weights[m]*(mat_ene[Z[r,m],r,m] - lge[r,m])
     pl = -1*pl
-    reg = λ*L2Tensor(J)
+    reg = λ*sum(abs2,J)
     # println(reg)
     pl = pl + reg
-    println(pl," ",reg)
+    #println(pl," ",reg)
     # return pl, J, mat_ene, lge, pl-reg, reg
    return pl
 end 
