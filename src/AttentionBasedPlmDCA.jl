@@ -4,6 +4,7 @@ using NLopt
 #using KernelAbstractions
 import DCAUtils: read_fasta_alignment, remove_duplicate_sequences, compute_weights, add_pseudocount, compute_weighted_frequencies
 using LoopVectorization
+using PrecompileTools
 using DelimitedFiles: readdlm
 using Flux: DataLoader, Adam, gradient
 using Flux.Optimise: update! 
@@ -18,6 +19,7 @@ include("types.jl")
 include("utils.jl")
 include("dcascore.jl")
 include("gradient_test.jl")
+#include("precompile.jl")
 include("attention.jl")
 include("stochastic.jl")
 include("autoregressive.jl")

@@ -183,7 +183,7 @@ function pl_and_grad!(grad::Vector{Float64}, x::Vector{Float64}, plmvar::AttPlmV
     regularisation = sum(reg)
     total_pslikelihood = sum(pseudologlikelihood) + regularisation
     
-    #println(total_pslikelihood," ",regularisation)
+    println(total_pslikelihood," ",regularisation)
     return total_pslikelihood
 end
 
