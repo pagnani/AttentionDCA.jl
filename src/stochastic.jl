@@ -19,15 +19,15 @@ end
 
 function myloss(m, Z, weights; λ = 0.001)
     
-    @tullio sf[i, j, h] := Q[h,d,i]*K[h,d,j]
+    @tullio sf[i, j, h] := Q[h,d,i]*K[h,d,j] #O(NNHd)
     sf = AttentionBasedPlmDCA.softmax_notinplace(sf,dims=2) 
     
-    @tullio J[i,j,a,b] := sf[i,j,h]*V[h,a,b]*(j!=i)
+    @tullio J[i,j,a,b] := sf[i,j,h]*V[h,a,b]*(j!=i) #O(NNqqH)
    
-    @tullio mat_ene[a,r,m] := J[r,j,a,Z[j,m]]
+    @tullio mat_ene[a,r,m] := J[r,j,a,Z[j,m]] #O(qNNM)
     lge = logsumexp(mat_ene,dims=1)[1,:,:]
 
-    @tullio pl = weights[m]*(mat_ene[Z[r,m],r,m] - lge[r,m])
+    @tullio pl = weights[m]*(mat_ene[Z[r,m],r,m] - lge[r,m]) #O(NM)
     pl = -1*pl
     reg = λ*(sum(abs2, J))
     
