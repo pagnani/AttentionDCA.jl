@@ -49,6 +49,19 @@ function score(Q, K, V; min_separation::Int=6)
     return compute_ranking(FNapc, min_separation)
 end
 
+function score(Jtens; min_separation::Int=6)
+    q,q,L,L = size(Jtens)
+    
+    Jt = 0.5 * (Jtens + permutedims(Jtens,[2,1,4,3]))
+
+    ht = zeros(eltype(Jt), q, L)
+    Jzsg, _ = gauge(Jt, ht, ZeroSumGauge())
+    FN = compute_fn(Jzsg)
+    FNapc = correct_APC(FN)
+    return compute_ranking(FNapc, min_separation)
+end
+
+
 function compute_fn(J::AbstractArray{T,4}) where {T<:AbstractFloat}
     q, q, L, L = size(J)
     fn = zeros(T, L, L)

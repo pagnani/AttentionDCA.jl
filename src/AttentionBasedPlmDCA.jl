@@ -6,10 +6,11 @@ import DCAUtils: read_fasta_alignment, remove_duplicate_sequences, compute_weigh
 using LoopVectorization
 using PrecompileTools
 using DelimitedFiles: readdlm
-using Flux: DataLoader, Adam, gradient
-using Flux.Optimise: update! 
-using Flux.Optimisers: setup
-using Distributions: wsample
+import Flux
+import Flux: DataLoader, Adam, gradient
+import Flux.Optimise: update! 
+import Flux.Optimisers: setup
+import Distributions: wsample
 using ExtractMacro
 using ArDCA
 
@@ -19,9 +20,9 @@ include("types.jl")
 include("utils.jl")
 include("dcascore.jl")
 include("gradient_test.jl")
-#include("precompile.jl")
 include("attention.jl")
 include("stochastic.jl")
 include("autoregressive.jl")
 include("newfile.jl")
+include("precompile.jl")
 end
