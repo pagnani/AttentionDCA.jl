@@ -223,7 +223,7 @@ function artrainer(D,η,batch_size,n_epoch;
     return m
 end
 
-function trainer(m,D,η,batch_size,n_epoch; 
+function artrainer(m,D,η,batch_size,n_epoch; 
     structfile = "../ArDCAData/data/PF00014/PF00014_struct.dat",
     savefile::Union{String, Nothing} = nothing)
 
