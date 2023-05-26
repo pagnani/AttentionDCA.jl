@@ -17,8 +17,9 @@ using PrecompileTools
         redirect_stdout(devnull) do
             Weights, Z, N, M, q = ReadFasta(fastafile, 0.9, :auto, true)
             D = (Z,Weights)
-            res1=mytrainer(D,0.005,M,1, structfile = structfile)
-            res2=attentiondca(fastafile,maxit=2,H=H,d=d)
+            res1=trainer(D,0.005,M,1, structfile = structfile)
+            res2=artrainer(D,0.005,M,1, structfile = structfile)
+            res3=attentiondca(fastafile,maxit=2,H=H,d=d)
         end
     end
 
