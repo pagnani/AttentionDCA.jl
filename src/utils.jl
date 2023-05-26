@@ -78,7 +78,7 @@ function L2Tensor(matrix::AbstractArray{T}) where T <: Float64
     return L2
 end
 
-function reshapetensor(J::Array{Float64, 4}, N::Int, q)
+function reshapetensor(J::Array{Float64, 4}, N::Int, q::Int)
     newJ = Array{Float64, 3}[]
     _J = zeros(Float64, N, q, q)
     for i in 1:N-1 
