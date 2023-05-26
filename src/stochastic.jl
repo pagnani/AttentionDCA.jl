@@ -190,7 +190,8 @@ end
 function artrainer(D,η,batch_size,n_epoch; 
     H = 32,
     d = 23, 
-    init = rand, 
+    init = rand,
+    λ=0.001, 
     structfile = "../ArDCAData/data/PF00014/PF00014_struct.dat",
     savefile::Union{String, Nothing} = nothing)
     
@@ -199,20 +200,20 @@ function artrainer(D,η,batch_size,n_epoch;
 
     m = (Q = init(H,d,N), K = init(H,d,N), V = init(H,q,q))
     t = setup(Adam(η), m)
-
+    
     savefile !== nothing && (file = open(savefile,"a"))
     
     for i in 1:n_epoch
         loader = DataLoader(D, batchsize = batch_size, shuffle = true)
         for (z,w) in loader
             _w = w/sum(w)
-            g = gradient(x->arloss(x.Q, x.K, x.V, z, _w),m)[1];
+            g = gradient(x->arloss(x.Q, x.K, x.V, z, _w, λ=λ),m)[1];
             update!(t,m,g)
         end
 
         #s = score(m.Q,m.K,m.V);
         #PPV = compute_PPV(s,structfile)
-        l = round(arloss(m.Q, m.K, m.V, D[1], D[2]),digits=5) 
+        l = round(arloss(m.Q, m.K, m.V, D[1], D[2], λ=λ),digits=5) 
         #p = round((PPV[N]),digits=3)
         #println("Epoch $i loss = $l \t PPV@L = $p \t First Error = $(findfirst(x->x!=1, PPV))")
         println("Epoch $i loss = $l")
@@ -223,7 +224,8 @@ function artrainer(D,η,batch_size,n_epoch;
     return m
 end
 
-function artrainer(m,D,η,batch_size,n_epoch; 
+function artrainer(m,D,η,batch_size,n_epoch;
+    λ = 0.001, 
     structfile = "../ArDCAData/data/PF00014/PF00014_struct.dat",
     savefile::Union{String, Nothing} = nothing)
 
@@ -237,13 +239,13 @@ function artrainer(m,D,η,batch_size,n_epoch;
     
         for (z,w) in loader
             _w = w/sum(w)
-            g = gradient(x->arloss(x.Q, x.K, x.V, z, _w),m)[1];
+            g = gradient(x->arloss(x.Q, x.K, x.V, z, _w, λ=λ),m)[1];
             update!(t,m,g)
         end
     
         #s = score(m.Q,m.K,m.V);
         #PPV = compute_PPV(s,structfile)
-        l = round(arloss(m.Q, m.K, m.V, D[1], D[2]),digits=5) 
+        l = round(arloss(m.Q, m.K, m.V, D[1], D[2], λ=λ),digits=5) 
         #p = round((PPV[N]),digits=3)
         #println("Epoch $i loss = $l \t PPV@L = $p \t First Error = $(findfirst(x->x!=1, PPV))")
         println("Epoch $i loss = $l")
