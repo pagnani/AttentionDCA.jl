@@ -222,3 +222,35 @@ function artrainer(D,η,batch_size,n_epoch;
     savefile !== nothing && close(file)
     return m
 end
+
+function trainer(m,D,η,batch_size,n_epoch; 
+    structfile = "../ArDCAData/data/PF00014/PF00014_struct.dat",
+    savefile::Union{String, Nothing} = nothing)
+
+    N,_ = size(D[1])
+    t = setup(Adam(η), m)
+    
+    savefile !== nothing && (file = open(savefile,"a"))
+
+    for i in 1:n_epoch
+        loader = DataLoader(D, batchsize = batch_size, shuffle = true)
+    
+        for (z,w) in loader
+            _w = w/sum(w)
+            g = gradient(x->arloss(x.Q, x.K, x.V, z, _w),m)[1];
+            update!(t,m,g)
+        end
+    
+        #s = score(m.Q,m.K,m.V);
+        #PPV = compute_PPV(s,structfile)
+        l = round(arloss(m.Q, m.K, m.V, D[1], D[2]),digits=5) 
+        #p = round((PPV[N]),digits=3)
+        #println("Epoch $i loss = $l \t PPV@L = $p \t First Error = $(findfirst(x->x!=1, PPV))")
+        println("Epoch $i loss = $l")
+        savefile !== nothing && println(file, "Epoch $i loss = $l \t PPV@L = $p \t First Error = $(findfirst(x->x!=1, PPV))")
+    end
+
+    savefile !== nothing && close(file)
+
+    return m
+end
