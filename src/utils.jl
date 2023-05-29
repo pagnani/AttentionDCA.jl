@@ -119,6 +119,10 @@ function compute_empirical_freqs(Z::AbstractArray{Ti,2}, W::AbstractVector{Float
     f
 end
 
+compute_freq(Z::Matrix) = compute_weighted_frequencies(Matrix{Int8}(Z), fill(1/size(Z,2), size(Z,2)))
+compute_freq(Z::Matrix,W::Vector{Float64}) = compute_weighted_frequencies(Matrix{Int8}(Z), W)
+
+
 function entropy(Z::AbstractArray{Ti,2}, W::AbstractVector{Float64}) where {Ti<:Integer}
     N,_ = size(Z)
     q = maximum(Z)
