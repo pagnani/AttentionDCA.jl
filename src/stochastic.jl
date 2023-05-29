@@ -221,7 +221,9 @@ function artrainer(D,η,batch_size,n_epoch;
     end
 
     savefile !== nothing && close(file)
-    return m
+    arnet = arnet_builder2(m)
+
+    return arnet, m
 end
 
 function artrainer(m,D,η,batch_size,n_epoch;
@@ -253,8 +255,9 @@ function artrainer(m,D,η,batch_size,n_epoch;
     end
 
     savefile !== nothing && close(file)
+    arnet = arnet_builder2(m)
 
-    return m
+    return arnet, m
 end
 
 
@@ -338,7 +341,10 @@ function artrainer2(D,η,batch_size,n_epoch;
     end
 
     savefile !== nothing && close(file)
-    return m
+    p0 = computep0(D)
+    net = arnet_builder2(m, p0)
+
+    return net, m
 end
 
 function artrainer2(m,D,η,batch_size,n_epoch;
@@ -370,6 +376,31 @@ function artrainer2(m,D,η,batch_size,n_epoch;
     end
 
     savefile !== nothing && close(file)
+    p0 = computep0(D)
+    net = arnet_builder2(m, p0)
 
-    return m
+    return net, m
+end
+
+function arnet_builder(m, p0; q = 21)
+    _,_,N = size(m.Q)
+    mask = tril(ones(N,N),-1) 
+    
+    @tullio W[h, i, j] := m.Q[h,d,i]*m.K[h,d,j]
+    W = softmax(W,dims=3) 
+    @tullio J[i,j,a,b] := W[h,i,j]*m.V[h,a,b]*mask[i,j]
+    J_reshaped = AttentionBasedPlmDCA.reshapetensor(J,N,q)
+    H = [zeros(q) for _ in 1:N-1]
+    
+    return net = ArNet(collect(1:N), p0, J_reshaped,H)
+end
+function arnet_builder2(m, p0; q = 21)
+    _,_,N = size(m.Q)
+
+    @tullio W[h, i, j] := m.Q[h,d,i]*m.K[h,d,j] - 1.0e8*(j>=i)
+    W = softmax(W,dims=3)
+    @tullio J[i,j,a,b] := W[h,i,j]*m.V[h,a,b]*(i!=1)
+    J_reshaped = AttentionBasedPlmDCA.reshapetensor(J,N,q)
+    H = [zeros(q) for _ in 1:N-1]
+    return net = ArNet(collect(1:N), p0, J_reshaped,H)
 end

@@ -100,6 +100,14 @@ function computep0(var::Union{AttPlmVar,FieldAttPlmVar})
     p0
 end
 
+function computep0(D; q::Int = 21)
+    p0 = zeros(q)
+    for i in 1:length(D[2])
+        p0[D[1][1, i]] += D[2][i]
+    end
+    return p0
+end
+
 function compute_empirical_freqs(Z::AbstractArray{Ti,2}, W::AbstractVector{Float64}, q::Ti) where {Ti<:Integer}
     N, M = size(Z)
     f = zeros(q, N)
