@@ -257,7 +257,7 @@ function artrainer(m,D,η,batch_size,n_epoch;
 
     savefile !== nothing && close(file)
     p0 = computep0(D)
-    net = arnet_builder2(m, p0)
+    net = arnet_builder(m, p0)
 
     return net, m
 end
