@@ -394,7 +394,7 @@ function arnet_builder(m, p0; q = 21)
     J_reshaped = AttentionBasedPlmDCA.reshapetensor(J,N,q)
     H = [zeros(q) for _ in 1:N-1]
     net = ArNet(collect(1:N), p0, J_reshaped,H)
-    return net, m
+    return net
 end
 function arnet_builder2(m, p0; q = 21)
     _,_,N = size(m.Q)
@@ -405,7 +405,7 @@ function arnet_builder2(m, p0; q = 21)
     J_reshaped = AttentionBasedPlmDCA.reshapetensor(J,N,q)
     H = [zeros(q) for _ in 1:N-1]
     net = ArNet(collect(1:N), p0, J_reshaped,H)
-    return net, m
+    return net
 end
 
 
