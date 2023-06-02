@@ -453,11 +453,12 @@ function artrainer(D::Tuple{Matrix{Int}, Vector{Float64}}, η::Float64, batch_si
     savefile !== nothing && close(file)
     p0 = computep0(D)
     
-    @tullio W[h, i, j] := m.Q[h,d,i]*m.K[h,d,j] - 1.0e8*(j>=i)
-    W = softmax(W,dims=3)
-    @tullio J[i,j,a,b] := W[h,i,j]*m.V[h,a,b]*(i!=1)
+    @tullio W[h, i, j] := m.Q[h,d,i]*m.K[h,d,j]
+    W = softmax(W,dims=3) 
+    @tullio J[i,j,a,b] := W[h,i,j]*m.V[h,a,b]*(j<i)
     J_reshaped = AttentionBasedPlmDCA.reshapetensor(J,N,q)
     F = [zeros(q) for _ in 1:N-1]
+    
     arnet = ArNet(idxperm, p0, J_reshaped,F)
 
     return arnet, m
