@@ -138,11 +138,13 @@ end
 function arloss(Q::Array{Float64, 3},
     K::Array{Float64, 3},
     V::Array{Float64, 3}, 
-    Z::Matrix{Int}, 
-    weights::Vector{Float64}; 
+    Z::Matrix{Int},
+    weights::Vector{Float64}, ω;
+    reg_version = :CONST, 
     λ::Float64 = 0.001)
 
     N = size(Z,1)
+    q = maximum(Z)
     mask = tril(ones(N,N),-1) 
     
     @tullio sf[i, j, h] := Q[h,d,i]*K[h,d,j]
@@ -155,7 +157,16 @@ function arloss(Q::Array{Float64, 3},
 
     @tullio pl = weights[m]*(mat_ene[Z[r,m],r,m] - lge[r,m])
     pl = -1*pl
-    reg = λ*(sum(abs2, J))
+
+
+    if reg_version == :CONST
+        reg = λ*(sum(abs2, J))
+    elseif reg_version == :DISTR
+        reg = λ*ω'*sum(abs2,J,dims=(2,3,4))[:]
+    else
+        error("Unexcepted value for reg_version")
+    end
+    
     
     pl = pl + reg
 
@@ -164,10 +175,13 @@ end
 
 function arloss(m::NamedTuple{(:Q, :K, :V), Tuple{Array{Float64, 3}, Array{Float64, 3}, Array{Float64, 3}}}, 
     Z::Matrix{Int}, 
-    weights::Vector{Float64}; 
+    weights::Vector{Float64},
+    ω; 
+    reg_version = :CONST,
     λ::Float64 = 0.001)
     
     N = size(Z,1)
+    q = maximum(Z)
     mask = tril(ones(N,N),-1) 
     
     @tullio sf[i, j, h] := m.Q[h,d,i]*m.K[h,d,j]
@@ -180,7 +194,15 @@ function arloss(m::NamedTuple{(:Q, :K, :V), Tuple{Array{Float64, 3}, Array{Float
 
     @tullio pl = weights[m]*(mat_ene[Z[r,m],r,m] - lge[r,m])
     pl = -1*pl
-    reg = λ*(sum(abs2, J))
+    
+
+    if reg_version == :CONST
+        reg = λ*(sum(abs2, J))
+    elseif reg_version == :DISTR
+        reg = λ*ω'*sum(abs2,J,dims=(2,3,4))[:]
+    else
+        error("Unexcepted value for reg_version")
+    end    
     
     pl = pl + reg
 
@@ -411,6 +433,7 @@ end
 
 function artrainer(D::Tuple{Matrix{Int}, Vector{Float64}}, η::Float64, batch_size::Int , n_epochs::Int, idxperm::Vector{Int}; 
     init_m = Nothing,  
+    reg_version = :CONST,
     H = 32,
     d = 23, 
     init = rand,
@@ -431,6 +454,9 @@ function artrainer(D::Tuple{Matrix{Int}, Vector{Float64}}, η::Float64, batch_si
         (Q = init(H,d,N), K = init(H,d,N), V = init(H,q,q))
     end
     
+    omega = [(i-1)*q*q for i in 1:N]
+    omega = omega ./ sum(omega)
+
     t = setup(Adam(η), m)
 
     savefile !== nothing && (file = open(savefile,"a"))
@@ -439,11 +465,11 @@ function artrainer(D::Tuple{Matrix{Int}, Vector{Float64}}, η::Float64, batch_si
         loader = DataLoader(D, batchsize = batch_size, shuffle = true)
         for (z,w) in loader
             _w = w/sum(w)
-            g = gradient(x->arloss(x.Q, x.K, x.V, z, _w, λ=λ),m)[1];
+            g = gradient(x->arloss(x.Q, x.K, x.V, z, _w, omega, λ=λ, reg_version = reg_version),m)[1];
             update!(t,m,g)
         end
 
-        l = round(arloss(m.Q, m.K, m.V, D[1], D[2], λ=λ),digits=5) 
+        l = round(arloss(m.Q, m.K, m.V, D[1], D[2], omega,  λ=λ),digits=5) 
         
         println("Epoch $i loss = $l")
         
@@ -583,7 +609,7 @@ function artrainer2(filename::String, η::Float64, batch_size::Int, n_epochs::In
         error("permorder can only be a Symbol or a Vector")
     end
 
-    
+
     data = (Z,Weights)
     println("preprocessing took $time seconds")
     
