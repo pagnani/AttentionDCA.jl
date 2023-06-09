@@ -431,6 +431,7 @@ end
 #     return net
 # end
 
+
 function artrainer(D::Tuple{Matrix{Int}, Vector{Float64}}, η::Float64, batch_size::Int , n_epochs::Int, idxperm::Vector{Int}; 
     init_m = Nothing,  
     reg_version = :CONST,
