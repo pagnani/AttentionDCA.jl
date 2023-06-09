@@ -14,6 +14,7 @@ import Distributions: wsample
 using ExtractMacro
 using ArDCA
 
+
 export AttOut, AttPlmVar, FieldAttPlmVar, attentiondca, arattentiondca, score, compute_freq, compute_PPV, L2reg, sample, my_attentiondca, trainer, artrainer, artrainer2
 
 include("types.jl")
