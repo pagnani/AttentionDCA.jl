@@ -15,15 +15,16 @@ using ExtractMacro
 using ArDCA
 
 
-export AttOut, AttPlmVar, FieldAttPlmVar, attentiondca, arattentiondca, score, compute_freq, compute_PPV, L2reg, sample, my_attentiondca, trainer, artrainer, artrainer2
+export AttOut, AttPlmVar, score, compute_freq, compute_PPV, L2reg, sample, trainer, artrainer, artrainer2, attention_matrix_asym, attention_matrix_sym
 
 include("types.jl")
 include("utils.jl")
 include("dcascore.jl")
 include("gradient_test.jl")
 include("attention.jl")
-include("stochastic.jl")
+include("attention_analysis_utils.jl")
+#include("stochastic.jl")
 include("autoregressive.jl")
-include("newfile.jl")
-# include("precompile.jl")
+#include("newfile.jl")
+include("precompile.jl")
 end
