@@ -36,6 +36,7 @@ Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 
 [compat]
 ArDCA = "0.6"
+IJulia = "1"
 PlmDCA = "1"
 julia = "1.7"
 
