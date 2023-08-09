@@ -81,3 +81,11 @@ function freezedVtrainer(filename::String, V::Array{Float64,3}, n_epochs::Int;
     
     freezedVtrainer(data,V,n_epochs; kwds...)
 end
+
+function quickread(fastafile; moreinfo=false)
+    
+    Weights, Z, N, M, _ = ReadFasta(fastafile, 0.9, :auto, true, verbose = false);
+    moreinfo && return Weights, Z, N, M
+    return Z, Weights
+    
+end
