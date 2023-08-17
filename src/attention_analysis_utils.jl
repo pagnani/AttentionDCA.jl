@@ -89,3 +89,109 @@ function quickread(fastafile; moreinfo=false)
     return Z, Weights
     
 end
+
+
+
+
+###########################################
+########### AR VERSION ####################
+###########################################
+
+
+function ar_freezedVtrainer(D::Tuple{Matrix{Int}, Vector{Float64}}, V, n_epochs::Int, idxperm::Vector{Int}; 
+    init_m = Nothing,  
+    reg_version = :CONST,
+    η::Float64 = 0.005,
+    batch_size::Int = 1000, 
+    H = 32,
+    d = 23, 
+    init = rand,
+    λ=0.001, 
+    savefile::Union{String, Nothing} = nothing)
+    
+
+
+    N,M = size(D[1])
+    q = maximum(D[1])
+
+    arvar = ArVar(N,M,q,λ,0.0,D[1],D[2],idxperm)
+
+
+    m = if init_m !== Nothing
+        init_m
+    else
+        (Q = init(H,d,N), K = init(H,d,N))
+    end
+    
+    omega = [(i-1)*q*q for i in 1:N]
+    omega = omega ./ sum(omega)
+
+    t = setup(Adam(η), m)
+
+    savefile !== nothing && (file = open(savefile,"a"))
+    
+    for i in 1:n_epochs
+        loader = DataLoader(D, batchsize = batch_size, shuffle = true)
+        for (z,w) in loader
+            _w = w/sum(w)
+            g = gradient(x->arloss(x.Q, x.K, V, z, _w, omega, λ=λ, reg_version = reg_version),m)[1];
+            update!(t,m,g)
+        end
+
+        l = round(arloss(m.Q, m.K, V, D[1], D[2], omega,  λ=λ),digits=5) 
+        
+        println("Epoch $i loss = $l")
+        
+        savefile !== nothing && println(file, "Epoch $i loss = $l")
+    end
+
+    savefile !== nothing && close(file)
+    p0 = computep0(D)
+    
+    @tullio W[h, i, j] := m.Q[h,d,i]*m.K[h,d,j]
+    W = softmax(W,dims=3) 
+    @tullio J[i,j,a,b] := W[h,i,j]*V[h,a,b]*(j<i)
+    J_reshaped = AttentionBasedPlmDCA.reshapetensor(J,N,q)
+    F = [zeros(q) for _ in 1:N-1]
+    
+    arnet = ArNet(idxperm, p0, J_reshaped,F)
+
+    return arnet, arvar, m
+end
+
+
+function ar_freezedVtrainer(filename::String, V::Array{Float64,3}, n_epochs::Int, permorder::Union{Symbol, Vector{Int}};
+    theta::Union{Symbol,Real}=:auto,
+    η::Float64 = 0.005, 
+    batch_size::Int = 1000,
+    max_gap_fraction::Real=0.9,
+    remove_dups::Bool=true,
+    kwds...)
+    
+    time = @elapsed Weights, Z, N, M, q = ReadFasta(filename, max_gap_fraction, theta, remove_dups)
+    
+    idxperm = if typeof(permorder) == Symbol
+        S = entropy(Z,Weights)
+        if permorder === :ENTROPIC
+            sortperm(S)
+        elseif permorder === :REV_ENTROPIC
+            sortperm(S,rev=true)
+        elseif permorder === :RANDOM
+            randperm(N)
+        elseif permorder === :NATURAL
+            collect(1:N)
+        else
+            error("the end of the world has come")
+        end
+    elseif typeof(permorder) <: Vector
+        (length(permorder) != N) && error("length permorder ≠ $N")
+        isperm(permorder) && (permorder)
+    else
+        error("permorder can only be a Symbol or a Vector")
+    end
+
+    #ArDCA.permuterow!(Z,idxperm) 
+    data = (Z,Weights)
+    println("preprocessing took $time seconds")
+    ar_freezedVtrainer(data, V, n_epochs, idxperm; kwds...)
+end
