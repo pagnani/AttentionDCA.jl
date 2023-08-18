@@ -162,8 +162,6 @@ end
 
 function ar_freezedVtrainer(filename::String, V::Array{Float64,3}, n_epochs::Int, permorder::Union{Symbol, Vector{Int}};
     theta::Union{Symbol,Real}=:auto,
-    η::Float64 = 0.005, 
-    batch_size::Int = 1000,
     max_gap_fraction::Real=0.9,
     remove_dups::Bool=true,
     kwds...)

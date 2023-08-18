@@ -295,9 +295,11 @@ end
 # end
 
 
-function artrainer(D::Tuple{Matrix{Int}, Vector{Float64}}, η::Float64, batch_size::Int , n_epochs::Int, idxperm::Vector{Int}; 
+function artrainer(D::Tuple{Matrix{Int}, Vector{Float64}}, n_epochs::Int, idxperm::Vector{Int}; 
     init_m = Nothing,  
     reg_version = :CONST,
+    η = 0.005, 
+    batch_size = 1000, 
     H = 32,
     d = 23, 
     init = rand,
@@ -355,7 +357,7 @@ function artrainer(D::Tuple{Matrix{Int}, Vector{Float64}}, η::Float64, batch_si
 end
 
 
-function artrainer(filename::String, η::Float64, batch_size::Int, n_epochs::Int, permorder::Union{Symbol, Vector{Int}};
+function artrainer(filename::String, n_epochs::Int, permorder::Union{Symbol, Vector{Int}};
     theta::Union{Symbol,Real}=:auto,
     max_gap_fraction::Real=0.9,
     remove_dups::Bool=true,
@@ -386,7 +388,7 @@ function artrainer(filename::String, η::Float64, batch_size::Int, n_epochs::Int
     #ArDCA.permuterow!(Z,idxperm) 
     data = (Z,Weights)
     println("preprocessing took $time seconds")
-    artrainer(data, η, batch_size, n_epochs, idxperm; kwds...)
+    artrainer(data, n_epochs, idxperm; kwds...)
 end
 
 
