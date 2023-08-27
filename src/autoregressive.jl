@@ -2,18 +2,17 @@ function arloss(Q::Array{Float64, 3},
     K::Array{Float64, 3},
     V::Array{Float64, 3}, 
     Z::Matrix{Int},
-    weights::Vector{Float64}, ω;
-    reg_version = :CONST, 
+    weights::Vector{Float64};# ω;
+    #reg_version = :CONST, 
     λ::Float64 = 0.001)
 
     N = size(Z,1)
     q = maximum(Z)
-    mask = tril(ones(N,N),-1) 
     
     @tullio sf[i, j, h] := Q[h,d,i]*K[h,d,j]
     sf = softmax_notinplace(sf,dims=2) 
     
-    @tullio J[i,j,a,b] := sf[i,j,h]*V[h,a,b]*mask[i,j]
+    @tullio J[i,j,a,b] := sf[i,j,h]*V[h,a,b]*(i>j)
    
     @tullio mat_ene[a,r,m] := J[r,j,a,Z[j,m]]
     lge = logsumexp(mat_ene,dims=1)[1,:,:]
@@ -22,13 +21,13 @@ function arloss(Q::Array{Float64, 3},
     pl = -1*pl
 
 
-    if reg_version == :CONST
+    #if reg_version == :CONST
         reg = λ*(sum(abs2, J))
-    elseif reg_version == :DISTR
-        reg = λ*ω'*sum(abs2,J,dims=(2,3,4))[:]
-    else
-        error("Unexcepted value for reg_version")
-    end
+    #elseif reg_version == :DISTR
+    #    reg = λ*ω'*sum(abs2,J,dims=(2,3,4))[:]
+    #else
+    #    error("Unexcepted value for reg_version")
+    #end
     
     
     pl = pl + reg
@@ -38,19 +37,18 @@ end
 
 function arloss(m::NamedTuple{(:Q, :K, :V), Tuple{Array{Float64, 3}, Array{Float64, 3}, Array{Float64, 3}}}, 
     Z::Matrix{Int}, 
-    weights::Vector{Float64},
-    ω; 
-    reg_version = :CONST,
+    weights::Vector{Float64};
+    #ω; 
+    #reg_version = :CONST,
     λ::Float64 = 0.001)
     
     N = size(Z,1)
     q = maximum(Z)
-    mask = tril(ones(N,N),-1) 
     
     @tullio sf[i, j, h] := m.Q[h,d,i]*m.K[h,d,j]
     sf = softmax_notinplace(sf,dims=2) 
     
-    @tullio J[i,j,a,b] := sf[i,j,h]*m.V[h,a,b]*mask[i,j]
+    @tullio J[i,j,a,b] := sf[i,j,h]*m.V[h,a,b]*(i>j)
    
     @tullio mat_ene[a,r,m] := J[r,j,a,Z[j,m]]
     lge = logsumexp(mat_ene,dims=1)[1,:,:]
@@ -59,13 +57,13 @@ function arloss(m::NamedTuple{(:Q, :K, :V), Tuple{Array{Float64, 3}, Array{Float
     pl = -1*pl
     
 
-    if reg_version == :CONST
+    #if reg_version == :CONST
         reg = λ*(sum(abs2, J))
-    elseif reg_version == :DISTR
-        reg = λ*ω'*sum(abs2,J,dims=(2,3,4))[:]
-    else
-        error("Unexcepted value for reg_version")
-    end    
+    #elseif reg_version == :DISTR
+    #    reg = λ*ω'*sum(abs2,J,dims=(2,3,4))[:]
+    #else
+    #    error("Unexcepted value for reg_version")
+    #end    
     
     pl = pl + reg
 

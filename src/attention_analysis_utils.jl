@@ -134,11 +134,11 @@ function ar_freezedVtrainer(D::Tuple{Matrix{Int}, Vector{Float64}}, V, n_epochs:
         loader = DataLoader(D, batchsize = batch_size, shuffle = true)
         for (z,w) in loader
             _w = w/sum(w)
-            g = gradient(x->arloss(x.Q, x.K, V, z, _w, omega, λ=λ, reg_version = reg_version),m)[1];
+            g = gradient(x->arloss(x.Q, x.K, V, z, _w, λ=λ),m)[1];
             update!(t,m,g)
         end
 
-        l = round(arloss(m.Q, m.K, V, D[1], D[2], omega,  λ=λ),digits=5) 
+        l = round(arloss(m.Q, m.K, V, D[1], D[2],  λ=λ),digits=5) 
         
         println("Epoch $i loss = $l")
         
@@ -156,7 +156,7 @@ function ar_freezedVtrainer(D::Tuple{Matrix{Int}, Vector{Float64}}, V, n_epochs:
     
     arnet = ArNet(idxperm, p0, J_reshaped,F)
 
-    return arnet, arvar, m
+    return arnet, arvar, m, Q, K 
 end
 
 
