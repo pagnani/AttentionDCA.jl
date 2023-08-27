@@ -295,7 +295,7 @@ end
 
 function artrainer(D::Tuple{Matrix{Int}, Vector{Float64}}, n_epochs::Int, idxperm::Vector{Int}; 
     init_m = Nothing,  
-    reg_version = :CONST,
+    #reg_version = :CONST,
     η = 0.005, 
     batch_size = 1000, 
     H = 32,
@@ -329,11 +329,11 @@ function artrainer(D::Tuple{Matrix{Int}, Vector{Float64}}, n_epochs::Int, idxper
         loader = DataLoader(D, batchsize = batch_size, shuffle = true)
         for (z,w) in loader
             _w = w/sum(w)
-            g = gradient(x->arloss(x.Q, x.K, x.V, z, _w, omega, λ=λ, reg_version = reg_version),m)[1];
+            g = gradient(x->arloss(x.Q, x.K, x.V, z, _w, λ=λ),m)[1];
             update!(t,m,g)
         end
 
-        l = round(arloss(m.Q, m.K, m.V, D[1], D[2], omega,  λ=λ),digits=5) 
+        l = round(arloss(m.Q, m.K, m.V, D[1], D[2],  λ=λ),digits=5) 
         
         println("Epoch $i loss = $l")
         

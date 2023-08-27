@@ -156,7 +156,7 @@ function ar_freezedVtrainer(D::Tuple{Matrix{Int}, Vector{Float64}}, V, n_epochs:
     
     arnet = ArNet(idxperm, p0, J_reshaped,F)
 
-    return arnet, arvar, m, Q, K 
+    return arnet, arvar, m
 end
 
 
