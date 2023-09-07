@@ -14,6 +14,7 @@ using PrecompileTools
     @compile_workload begin
         redirect_stdout(devnull) do
             res1=trainer(fastafile, n_epochs, batch_size = batch_size, H = H, d = 2, structfile = structfile)
+            res2=artrainer(fastafile, n_epochs, batch_size = batch_size, H = H, d = 2)
         end
     end
 
