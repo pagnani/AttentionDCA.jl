@@ -355,7 +355,8 @@ function artrainer(D::Tuple{Matrix{Int}, Vector{Float64}}, n_epochs::Int, idxper
 end
 
 
-function artrainer(filename::String, n_epochs::Int, permorder::Union{Symbol, Vector{Int}};
+function artrainer(filename::String, n_epochs::Int;
+    permorder::Union{Symbol, Vector{Int}} = :NATURAL, 
     theta::Union{Symbol,Real}=:auto,
     max_gap_fraction::Real=0.9,
     remove_dups::Bool=true,
@@ -364,15 +365,16 @@ function artrainer(filename::String, n_epochs::Int, permorder::Union{Symbol, Vec
     time = @elapsed Weights, Z, N, M, q = ReadFasta(filename, max_gap_fraction, theta, remove_dups)
     
     idxperm = if typeof(permorder) == Symbol
-        S = entropy(Z,Weights)
-        if permorder === :ENTROPIC
+        if permorder === :NATURAL
+            collect(1:N)
+        elseif permorder === :ENTROPIC
+            S = entropy(Z,Weights)
             sortperm(S)
         elseif permorder === :REV_ENTROPIC
+            S = entropy(Z,Weights)
             sortperm(S,rev=true)
         elseif permorder === :RANDOM
             randperm(N)
-        elseif permorder === :NATURAL
-            collect(1:N)
         else
             error("the end of the world has come")
         end

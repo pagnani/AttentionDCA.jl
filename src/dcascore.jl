@@ -126,21 +126,21 @@ function compute_actualPPV(filestruct;cutoff=8.0,min_separation=6)
     
 end
 
-function compute_PPV(Out::Union{AttOut},filestruct)
+function compute_PPV(Out::Union{AttOut},filestruct; min_separation::Int = 6)
     @extract Out: Q K V
     
     dist = compute_residue_pair_dist(filestruct)
-    _score = score(Q, K, V) 
-    return map(x->x[4], compute_referencescore(_score, dist))
+    _score = score(Q, K, V, min_separation = min_separation) 
+    return map(x->x[4], compute_referencescore(_score, dist; mindist = min_separation))
 
 end 
 
-function compute_PPV(score::Vector{Tuple{Int,Int,Float64}}, filestruct::String)
+function compute_PPV(score::Vector{Tuple{Int,Int,Float64}}, filestruct::String; min_separation::Int = 6)
     dist = compute_residue_pair_dist(filestruct)
-    return map(x->x[4], compute_referencescore(score, dist))
+    return map(x->x[4], compute_referencescore(score, dist, mindist = min_separation))
 end
 
-function compute_PPV(arnet::ArDCA.ArNet, arvar::ArDCA.ArVar, seqid::Int64, filestruct::String; pc::Float64=0.1,min_separation::Int=1)
+function compute_PPV(arnet::ArDCA.ArNet, arvar::ArDCA.ArVar, seqid::Int64, filestruct::String; pc::Float64=0.1,min_separation::Int=6)
     score = ArDCA.epistatic_score(arnet, arvar, seqid, pc = pc, min_separation = min_separation)
-    return compute_PPV(score, filestruct)
+    return compute_PPV(score, filestruct, min_separation = min_separation)
 end

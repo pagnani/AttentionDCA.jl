@@ -1,6 +1,6 @@
 module AttentionBasedPlmDCA
 using Printf, LinearAlgebra, Statistics, Tullio, PottsGauge, Random
-using NLopt
+#using NLopt
 #using KernelAbstractions
 import DCAUtils: read_fasta_alignment, remove_duplicate_sequences, compute_weights, add_pseudocount, compute_weighted_frequencies
 using LoopVectorization
