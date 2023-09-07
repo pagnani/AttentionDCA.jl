@@ -30,7 +30,6 @@ attention_matrix_sym(Q,K,V) = attention_matrix_sym(Q,K)
 function freezedVtrainer(D,V,n_epochs; 
     η = 0.005,
     batch_size = 1000,
-    H = 32,
     d = 23, 
     init = rand,
     λ = 0.001,
@@ -38,7 +37,7 @@ function freezedVtrainer(D,V,n_epochs;
     savefile::Union{String, Nothing} = nothing)
     
     N,_ = size(D[1])
-    #q = maximum(D[1])
+    H,q,q = size(V)
     
     V = V[1:H, :, :] #nel caso la V esterna abbia più teste di quelle che usiamo per la famiglia corrente
 
@@ -100,10 +99,9 @@ end
 
 function ar_freezedVtrainer(D::Tuple{Matrix{Int}, Vector{Float64}}, V, n_epochs::Int, idxperm::Vector{Int}; 
     init_m = Nothing,  
-    reg_version = :CONST,
+    #reg_version = :CONST,
     η::Float64 = 0.005,
     batch_size::Int = 1000, 
-    H = 32,
     d = 23, 
     init = rand,
     λ=0.001, 
@@ -112,7 +110,7 @@ function ar_freezedVtrainer(D::Tuple{Matrix{Int}, Vector{Float64}}, V, n_epochs:
 
 
     N,M = size(D[1])
-    q = maximum(D[1])
+    H,q,_ = szie(V)
 
     arvar = ArVar(N,M,q,λ,0.0,D[1],D[2],idxperm)
 
@@ -192,4 +190,51 @@ function ar_freezedVtrainer(filename::String, V::Array{Float64,3}, n_epochs::Int
     data = (Z,Weights)
     println("preprocessing took $time seconds")
     ar_freezedVtrainer(data, V, n_epochs, idxperm; kwds...)
+end
+
+
+function my_epistatic_score(Q,K,V, arvar;
+    permorder = :NATURAL, 
+    min_separation::Int=6)
+
+    H,d,N = size(Q)
+    @extract arvar : Z Weights = W M N q 
+
+    idxperm = if typeof(permorder) == Symbol
+        S = entropy(Z,Weights)
+        if permorder === :ENTROPIC
+            sortperm(S)
+        elseif permorder === :REV_ENTROPIC
+            sortperm(S,rev=true)
+        elseif permorder === :RANDOM
+            randperm(N)
+        elseif permorder === :NATURAL
+            collect(1:N)
+        else
+            error("the end of the world has come")
+        end
+    elseif typeof(permorder) <: Vector
+        (length(permorder) != N) && error("length permorder ≠ $N")
+        isperm(permorder) && (permorder)
+    else
+        error("permorder can only be a Symbol or a Vector")
+    end
+
+    all_ep_score = []
+    
+    @tullio W[h, i, j] := Q[h,d,i]*K[h,d,j]
+    W = softmax(W,dims=3) 
+    p0 = computep0((Z,Weights))
+
+
+    for h in 1:H 
+        @tullio J[i,j,a,b] := W[$h,i,j]*V[$h,a,b]*(j<i)
+        J_reshaped = AttentionBasedPlmDCA.reshapetensor(J,N,q)
+        F = [zeros(q) for _ in 1:N-1]
+        arnet = ArNet(idxperm, p0, J_reshaped,F)
+        push!(all_ep_score, epistatic_score(arnet, arvar, rand(1:N), min_separation = min_separation))
+    end
+
+    return all_ep_score
+
 end
