@@ -147,52 +147,6 @@ end
 # end
 
 
-function arloss2(Q::Array{Float64, 3},
-    K::Array{Float64, 3},
-    V::Array{Float64, 3}, 
-    Z::Matrix{Int}, 
-    weights::Vector{Float64}; 
-    λ::Float64 = 0.001)
-    
-    @tullio sf[i, j, h] := Q[h,d,i]*K[h,d,j] - 1.0e8*(j>=i)
-    sf = softmax_notinplace(sf,dims=2) 
-                
-    @tullio J[i,j,a,b] := sf[i,j,h]*V[h,a,b]#*(i!=1)
-   
-    @tullio mat_ene[a,r,m] := J[r,j,a,Z[j,m]]
-    lge = AttentionBasedPlmDCA.logsumexp(mat_ene,dims=1)[1,:,:]
-
-    @tullio pl = weights[m]*(mat_ene[Z[r,m],r,m] - lge[r,m])
-    pl = -1*pl
-    reg = λ*(sum(abs2, J))
-    
-    pl = pl + reg
-    
-    return pl
-end
-
-function arloss2(m::NamedTuple{(:Q, :K, :V), Tuple{Array{Float64, 3}, Array{Float64, 3}, Array{Float64, 3}}}, 
-    Z::Matrix{Int}, 
-    weights::Vector{Float64}; 
-    λ::Float64 = 0.001)
-    
-    @tullio sf[i, j, h] := m.Q[h,d,i]*m.K[h,d,j] - 1.0e8*(j>=i)
-    sf = softmax_notinplace(sf,dims=2) 
-    
-    @tullio J[i,j,a,b] := sf[i,j,h]*m.V[h,a,b]#*(i!=1)
-   
-    @tullio mat_ene[a,r,m] := J[r,j,a,Z[j,m]]
-    lge = AttentionBasedPlmDCA.logsumexp(mat_ene,dims=1)[1,:,:]
-
-    @tullio pl = weights[m]*(mat_ene[Z[r,m],r,m] - lge[r,m])
-    pl = -1*pl
-    reg = λ*(sum(abs2, J))
-    
-    pl = pl + reg
-
-    return pl
-end 
-
 # function artrainer2(D,η,batch_size,n_epoch; 
 #     H = 32,
 #     d = 23, 
@@ -394,15 +348,50 @@ end
 
 
 
-function artrainer2(D::Tuple{Matrix{Int}, Vector{Float64}}, η::Float64, batch_size::Int , n_epochs::Int, idxperm::Vector{Int}; 
+
+
+
+function arloss2(Q::Array{Float64, 3},
+    K::Array{Float64, 3},
+    V::Array{Float64, 3}, 
+    Z::Matrix{Int}, 
+    weights::Vector{Float64}; 
+    λ::Float64 = 0.001)
+    
+    @tullio sf[i, j, h] := Q[h,d,i]*K[h,d,j] - 1.0e4*(j>=i)
+    sf = softmax_notinplace(sf,dims=2)
+    
+    sf[1,:,:] .= 0.0
+    @tullio J[i,j,a,b] := sf[i,j,h]*V[h,a,b]
+   
+    @tullio mat_ene[a,r,m] := J[r,j,a,Z[j,m]]
+    lge = AttentionBasedPlmDCA.logsumexp(mat_ene,dims=1)[1,:,:]
+
+    @tullio pl = weights[m]*(mat_ene[Z[r,m],r,m] - lge[r,m])
+    pl = -1*pl
+    reg = λ*(sum(abs2, J))
+    
+    println(pl," + ",reg," = ",pl+reg)
+    pl = pl + reg
+    
+    return pl
+end
+
+
+arloss2(m::NamedTuple{(:Q, :K, :V), Tuple{Array{Float64, 3}, Array{Float64, 3}, Array{Float64, 3}}}, Z::Matrix{Int}, weights::Vector{Float64}; 
+    λ::Float64 = 0.001) = arloss2(m..., Z, weights, λ = λ)
+
+
+function artrainer2(D::Tuple{Matrix{Int}, Vector{Float64}}, n_epochs::Int, idxperm::Vector{Int}; 
     init_m = Nothing,  
     H = 32,
-    d = 23, 
+    d = 23,
+    batch_size = 1000,
+    η = 0.005, 
     init = rand,
     λ=0.001, 
     savefile::Union{String, Nothing} = nothing)
     
-
 
     N,M = size(D[1])
     q = maximum(D[1])
@@ -447,7 +436,8 @@ function artrainer2(D::Tuple{Matrix{Int}, Vector{Float64}}, η::Float64, batch_s
 end
 
 
-function artrainer2(filename::String, η::Float64, batch_size::Int, n_epochs::Int, permorder::Union{Symbol, Vector{Int}};
+function artrainer2(filename::String, n_epochs::Int;
+    permorder::Union{Symbol, Vector{Int}} = :NATURAL,
     theta::Union{Symbol,Real}=:auto,
     max_gap_fraction::Real=0.9,
     remove_dups::Bool=true,
@@ -456,15 +446,16 @@ function artrainer2(filename::String, η::Float64, batch_size::Int, n_epochs::In
     time = @elapsed Weights, Z, N, M, q = ReadFasta(filename, max_gap_fraction, theta, remove_dups)
     
     idxperm = if typeof(permorder) == Symbol
-        S = entropy(Z,Weights)
-        if permorder === :ENTROPIC
+        if permorder === :NATURAL
+            collect(1:N)
+        elseif permorder === :ENTROPIC
+            S = entropy(Z,Weights)
             sortperm(S)
         elseif permorder === :REV_ENTROPIC
+            S = entropy(Z,Weights)
             sortperm(S,rev=true)
         elseif permorder === :RANDOM
             randperm(N)
-        elseif permorder === :NATURAL
-            collect(1:N)
         else
             error("the end of the world has come")
         end
@@ -479,5 +470,5 @@ function artrainer2(filename::String, η::Float64, batch_size::Int, n_epochs::In
     data = (Z,Weights)
     println("preprocessing took $time seconds")
     
-    artrainer2(data, η, batch_size, n_epochs, idxperm; kwds...)
+    artrainer2(data, n_epochs, idxperm; kwds...)
 end
