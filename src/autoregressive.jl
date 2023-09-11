@@ -361,8 +361,8 @@ function arloss2(Q::Array{Float64, 3},
     @tullio sf[i, j, h] := Q[h,d,i]*K[h,d,j] - 1.0e4*(j>=i)
     sf = softmax_notinplace(sf,dims=2)
     
-    sf[1,:,:] .= 0.0
-    @tullio J[i,j,a,b] := sf[i,j,h]*V[h,a,b]
+    #sf[1,:,:] .= 0.0
+    @tullio J[i,j,a,b] := sf[i,j,h]*V[h,a,b]*(i!=1)
    
     @tullio mat_ene[a,r,m] := J[r,j,a,Z[j,m]]
     lge = AttentionBasedPlmDCA.logsumexp(mat_ene,dims=1)[1,:,:]
