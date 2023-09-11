@@ -355,7 +355,8 @@ function arloss2(Q::Array{Float64, 3},
     K::Array{Float64, 3},
     V::Array{Float64, 3}, 
     Z::Matrix{Int}, 
-    weights::Vector{Float64}; 
+    weights::Vector{Float64};
+    verbose::Bool = false,  
     λ::Float64 = 0.001)
     
     @tullio sf[i, j, h] := Q[h,d,i]*K[h,d,j] - 1.0e4*(j>=i)
@@ -371,7 +372,7 @@ function arloss2(Q::Array{Float64, 3},
     pl = -1*pl
     reg = λ*(sum(abs2, J))
     
-    println(pl," + ",reg," = ",pl+reg)
+    verbose && println(pl," + ",reg," = ",pl+reg)
     pl = pl + reg
     
     return pl
