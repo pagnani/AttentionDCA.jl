@@ -26,5 +26,5 @@ include("attention_analysis_utils.jl")
 #include("stochastic.jl")
 include("autoregressive.jl")
 #include("newfile.jl")
-include("precompile.jl")
+#include("precompile.jl")
 end
