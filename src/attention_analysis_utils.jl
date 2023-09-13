@@ -110,7 +110,7 @@ function ar_freezedVtrainer(D::Tuple{Matrix{Int}, Vector{Float64}}, V, n_epochs:
 
 
     N,M = size(D[1])
-    H,q,_ = szie(V)
+    H,q,_ = size(V)
 
     arvar = ArVar(N,M,q,λ,0.0,D[1],D[2],idxperm)
 
