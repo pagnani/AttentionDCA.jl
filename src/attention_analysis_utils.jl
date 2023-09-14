@@ -102,7 +102,8 @@ function ar_freezedVtrainer(D::Tuple{Matrix{Int}, Vector{Float64}}, V, n_epochs:
     #reg_version = :CONST,
     η::Float64 = 0.005,
     batch_size::Int = 1000, 
-    d = 23, 
+    d = 23,
+    H = 32,  
     init = rand,
     λ=0.001, 
     savefile::Union{String, Nothing} = nothing)
@@ -158,8 +159,9 @@ function ar_freezedVtrainer(D::Tuple{Matrix{Int}, Vector{Float64}}, V, n_epochs:
 end
 
 
-function ar_freezedVtrainer(filename::String, V::Array{Float64,3}, n_epochs::Int, permorder::Union{Symbol, Vector{Int}};
+function ar_freezedVtrainer(filename::String, V::Array{Float64,3}, n_epochs::Int;
     theta::Union{Symbol,Real}=:auto,
+    permorder::Union{Symbol, Vector{Int}} = :NATURAL,
     max_gap_fraction::Real=0.9,
     remove_dups::Bool=true,
     kwds...)
