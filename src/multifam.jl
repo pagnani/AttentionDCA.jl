@@ -195,7 +195,7 @@ function multi_artrainer(D::Vector{Tuple{Matrix{Int}, Vector{Float64}}}, n_epoch
         for pf in loader
             ws = [pf[m][2]/sum(pf[m][2]) for m in 1:NF]
             Zs = [pf[m][1] for m in 1:NF] 
-            g = gradient(x->multi_loss(m.Qs, m.Ks, m.V, Zs, ws, λ = λ),m)[1];
+            g = gradient(x->multi_loss(x.Qs, x.Ks, x.V, Zs, ws, λ = λ),m)[1];
             update!(t,m,g)
         end
 
