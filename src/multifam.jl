@@ -153,14 +153,16 @@ function multi_artrainer(D::Vector{Tuple{Matrix{Int}, Vector{Float64}}}, n_epoch
     η = 0.005, 
     n_batches = 50, 
     init = rand,
-    λ=0.001, 
+    λ::Union{Float64,Vector{Float64}}=fill(0.001,length(D)), 
     savefile::Union{String, Nothing} = nothing)
 
-
+    NF = length(D)
+    if typeof(λ) == Float64 
+        λ = fill(λ,NF)
+    end
 
 
     #controlli vari
-    NF = length(D)
     length(d) == NF || error("Wrong number of d values")
     length(idxperm) == NF || error("Wrong number of idxperm arrays")
 
@@ -173,7 +175,7 @@ function multi_artrainer(D::Vector{Tuple{Matrix{Int}, Vector{Float64}}}, n_epoch
     for i in 1:NF
         Ns[i], Ms[i] = size(D[i][1])
         batch_sizes[i] = Int(round(Ms[i]/n_batches))
-        push!(arvars, ArVar(Ns[i],Ms[i],q,λ,0.0,D[i][1],D[i][2],idxperm[i]))
+        push!(arvars, ArVar(Ns[i],Ms[i],q,λ[i],0.0,D[i][1],D[i][2],idxperm[i]))
     end
 
     m = if init_m !== Nothing
@@ -199,7 +201,7 @@ function multi_artrainer(D::Vector{Tuple{Matrix{Int}, Vector{Float64}}}, n_epoch
             update!(t,m,g)
         end
 
-        losses = [round(arloss(m.Qs[i], m.Ks[i], m.V, D[i][1], D[i][2],  λ=λ),digits=5) for i in 1:NF]
+        losses = [round(arloss(m.Qs[i], m.Ks[i], m.V, D[i][1], D[i][2],  λ=λ[i]),digits=5) for i in 1:NF]
         print("Epoch $i ") 
         [print("loss PF$n = $(losses[n]), ") for n in 1:NF]
         println("-> Total loss = $(round(sum(losses),digits=5))")
@@ -223,7 +225,7 @@ function multi_loss(Qs, Ks, V, Zs, Ws; λ = λ)
 
     tot_loss = 0.0
     for i in 1:Nf
-        tot_loss = tot_loss + arloss(Qs[i], Ks[i], V, Zs[i], Ws[i], λ=λ)
+        tot_loss = tot_loss + arloss(Qs[i], Ks[i], V, Zs[i], Ws[i], λ=λ[i])
     end
 
     return tot_loss
