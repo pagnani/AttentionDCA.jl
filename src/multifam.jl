@@ -148,7 +148,8 @@ end
 
 
 
-function multi_artrainer(D::Vector{Tuple{Matrix{Int}, Vector{Float64}}}, n_epochs::Int, H::Int, d::Vector{Int}, idxperm::Vector{Vector{Int}}; 
+function multi_artrainer(D::Vector{Tuple{Matrix{Int}, Vector{Float64}}}, n_epochs::Union{Int,Vector{Int}}, H::Int, d::Vector{Int}, idxperm::Vector{Vector{Int}};
+
     init_m = Nothing,
     η = 0.005, 
     n_batches = 50, 
@@ -161,6 +162,9 @@ function multi_artrainer(D::Vector{Tuple{Matrix{Int}, Vector{Float64}}}, n_epoch
         λ = fill(λ,NF)
     end
 
+    if typeof(n_epochs) == Int
+        n_epochs = fill(n_epochs, NF)
+    end
 
     #controlli vari
     length(d) == NF || error("Wrong number of d values")
@@ -189,7 +193,8 @@ function multi_artrainer(D::Vector{Tuple{Matrix{Int}, Vector{Float64}}}, n_epoch
     savefile !== nothing && (file = open(savefile,"a"))
     
     loaders = Vector{Any}(undef, NF)
-    for i in 1:n_epochs
+    for i in 1:maximum(n_epochs)
+        flags = i .<= n_epochs
         for n in 1:NF
             loaders[n] = DataLoader(D[n], batchsize = batch_sizes[n], shuffle = true)
         end
@@ -197,9 +202,15 @@ function multi_artrainer(D::Vector{Tuple{Matrix{Int}, Vector{Float64}}}, n_epoch
         for pf in loader
             ws = [pf[m][2]/sum(pf[m][2]) for m in 1:NF]
             Zs = [pf[m][1] for m in 1:NF] 
-            g = gradient(x->multi_loss(x.Qs, x.Ks, x.V, Zs, ws, λ = λ),m)[1];
+            g = gradient(x->multi_loss(x.Qs[flags], x.Ks[flags], x.V, Zs[flags], ws[flags], λ = λ[flags]),m)[1]
+            #if sum(flags) != 0.0
+            #    g.Qs[flags] = zeros.(H,d[flags], Ns[flags])
+            #    g.Ks[flags] = zeros.(H,d[flags], Ns[flags])
+            #end
             update!(t,m,g)
+            #println(sum(m.Qs[1]),"   ",sum(m.Ks[1]),"   ",sum(m.Qs[2]),"   ",sum(m.Ks[2]),"   ", sum(m.V))
         end
+
 
         losses = [round(arloss(m.Qs[i], m.Ks[i], m.V, D[i][1], D[i][2],  λ=λ[i]),digits=5) for i in 1:NF]
         print("Epoch $i ") 
@@ -232,7 +243,7 @@ function multi_loss(Qs, Ks, V, Zs, Ws; λ = λ)
 end
 
 
-function multi_artrainer(filenames::Vector{String}, n_epochs::Int, H::Int, d::Vector{Int};
+function multi_artrainer(filenames::Vector{String}, n_epochs::Union{Int,Vector{Int}}, H::Int, d::Vector{Int};
     permorder = [:NATURAL for i in eachindex(filenames)],
     theta::Union{Symbol,Real}=:auto,
     max_gap_fraction::Real=0.9,
