@@ -18,6 +18,7 @@ using ArDCA
 export AttOut, AttPlmVar, score, compute_freq, compute_PPV, L2reg, sample, trainer, artrainer, artrainer2, attention_matrix_asym, attention_matrix_sym
 
 include("types.jl")
+include("gauge.jl")
 include("utils.jl")
 include("dcascore.jl")
 include("gradient_test.jl")
