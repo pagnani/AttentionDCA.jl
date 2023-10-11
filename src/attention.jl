@@ -81,3 +81,15 @@ function trainer(filename::String, n_epochs::Int;
     trainer(data, n_epochs; kwds...)
 end
 
+
+function stat_trainer(filename::String, n_sim::Int;
+    n_epochs = 100,
+    kwds...)
+    s = []
+    for _ in 1:n_sim
+        m = trainer(filename, n_epochs; kwds...)
+        push!(s,score(m...))
+    end
+    s = vcat(s...)
+    return unique(x->x[1:2],sort(s, by = x -> x[3], rev = true))
+end

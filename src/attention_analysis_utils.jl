@@ -81,6 +81,19 @@ function freezedVtrainer(filename::String, V::Array{Float64,3}, n_epochs::Int;
     freezedVtrainer(data,V,n_epochs; kwds...)
 end
 
+
+function stat_freezedVtrainer(filename::String, V, n_sim::Int;
+    n_epochs = 100,
+    kwds...)
+    s = []
+    for _ in 1:n_sim
+        m = freezedVtrainer(filename, V, n_epochs; kwds...)
+        push!(s,score(m...,V))
+    end
+    s = vcat(s...)
+    return unique(x->x[1:2],sort(s, by = x -> x[3], rev = true))
+end
+
 function quickread(fastafile; moreinfo=false)
     
     Weights, Z, N, M, _ = ReadFasta(fastafile, 0.9, :auto, true, verbose = false);

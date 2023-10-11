@@ -94,7 +94,7 @@ function computep0(var::Union{AttPlmVar,FieldAttPlmVar})
     Z = var.Z 
     q = var.q 
     p0 = zeros(q)
-    for i in 1:length(W)
+    for i in 1:eachindex(W)
         p0[Z[1, i]] += W[i]
     end
     p0
