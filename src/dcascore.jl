@@ -1,6 +1,11 @@
 function compute_residue_pair_dist(filedist::String)
     d = readdlm(filedist)
-    return Dict((round(Int,d[i,1]),round(Int,d[i,2])) => d[i,4] for i in 1:size(d,1) if d[i,4] != 0)
+    if size(d,2) == 4 
+        return Dict((round(Int,d[i,1]),round(Int,d[i,2])) => d[i,4] for i in 1:size(d,1) if d[i,4] != 0)
+    elseif size(d,2) == 3
+        Dict((round(Int,d[i,1]),round(Int,d[i,2])) => d[i,3] for i in 1:size(d,1) if d[i,3] != 0)
+    end
+
 end
 
 function compute_referencescore(score,dist::Dict; mindist::Int=6, cutoff::Number=8.0)
@@ -108,7 +113,7 @@ function compute_actualPPV(filestruct;cutoff=8.0,min_separation=6)
     l = 0
     trivial_contacts = 0
     for i in 1:L
-        if distances[i,4]<cutoff
+        if distances[i,end]<cutoff #originally it was [i,4]
             if abs(distances[i,1]-distances[i,2]) > min_separation
                 l += 1
             else 
