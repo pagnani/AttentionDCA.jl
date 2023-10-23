@@ -83,11 +83,12 @@ end
 
 
 function stat_trainer(filename::String, n_sim::Int;
+    Z,W = AttentionBasedPlmDCA.quickread(filename)
     n_epochs = 100,
     kwds...)
     s = []
     for _ in 1:n_sim
-        m = trainer(filename, n_epochs; kwds...)
+        m = trainer((Z,W), n_epochs; kwds...)
         push!(s,score(m...))
     end
     s = vcat(s...)
