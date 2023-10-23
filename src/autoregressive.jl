@@ -473,3 +473,18 @@ function artrainer2(filename::String, n_epochs::Int;
     
     artrainer2(data, n_epochs, idxperm; kwds...)
 end
+
+
+
+
+function stat_artrainer(filename::String, n_sim::Int;
+    n_epochs = 100,
+    kwds...)
+    s = []
+    for _ in 1:n_sim
+        m = artrainer(filename, n_epochs; kwds...)
+        push!(s, epistatic_score(m[1], m[2], 1))
+    end
+    s = vcat(s...)
+    return unique(x->x[1:2],sort(s, by = x -> x[3], rev = true))
+end
