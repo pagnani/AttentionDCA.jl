@@ -83,9 +83,9 @@ end
 
 
 function stat_trainer(filename::String, n_sim::Int;
-    Z,W = AttentionBasedPlmDCA.quickread(filename)
     n_epochs = 100,
     kwds...)
+    Z,W = AttentionBasedPlmDCA.quickread(filename)
     s = []
     for _ in 1:n_sim
         m = trainer((Z,W), n_epochs; kwds...)

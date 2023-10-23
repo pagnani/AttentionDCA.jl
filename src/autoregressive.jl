@@ -478,12 +478,12 @@ end
 
 
 function stat_artrainer(filename::String, n_sim::Int;
-    Z,W = AttentionBasedPlmDCA.quickread(filename)
     n_epochs = 100,
     kwds...)
+    Z,W = AttentionBasedPlmDCA.quickread(filename)
     s = []
     for _ in 1:n_sim
-        m = artrainer((Z,W), n_epochs; kwds...)
+        m = artrainer((Z,W), n_epochs, [1:size(Z,1);]; kwds...)
         push!(s, epistatic_score(m[1], m[2], 1))
     end
     s = vcat(s...)
