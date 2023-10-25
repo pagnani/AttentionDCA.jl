@@ -110,9 +110,8 @@ function stat_multi_trainer(filenames::Vector{String}, n_sim::Int, H, d;
     end
     for i in eachindex(filenames)
         s[i] = vcat(s[i]...)
-        s[i] = unique(x->x[1:2],sort(s[i], by = x -> x[3], rev = true))
     end 
-    return s
+    return Vector{Tuple{Int64, Int64, Float64}}.(s)
 end
 
 
