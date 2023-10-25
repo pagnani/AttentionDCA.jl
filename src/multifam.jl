@@ -1,6 +1,3 @@
-#Create a function that, given PF1 and PF2, learns (Q1,K1), (Q2,K2) and V. 
-#V must be common to the two families
-
 function multi_trainer(D::Vector{Tuple{Matrix{Int}, Vector{Float64}}}, n_epochs::Union{Int,Vector{Int}}, H::Int, d::Vector{Int};
     init_m = Nothing,
     η = 0.005, 
@@ -97,6 +94,25 @@ function multi_trainer(filenames::Vector{String}, n_epochs::Union{Int,Vector{Int
 
     multi_trainer(data, n_epochs, H, d; kwds...)
 
+end
+
+
+function stat_multi_trainer(filenames::Vector{String}, n_sim::Int, H, d;
+    n_epochs = 100,
+    kwds...)
+    D = AttentionBasedPlmDCA.quickread.(filenames)
+    s = [[] for _ in eachindex(filenames)]
+    for _ in 1:n_sim
+        m = multi_trainer(D, n_epochs, H, d; kwds...)
+        for i in eachindex(filenames)
+            push!(s[i],score(m.Qs[i],m.Ks[i],m.V))
+        end
+    end
+    for i in eachindex(filenames)
+        s[i] = vcat(s[i]...)
+        s[i] = unique(x->x[1:2],sort(s[i], by = x -> x[3], rev = true))
+    end 
+    return s
 end
 
 
@@ -268,3 +284,4 @@ function compute_p0_J_F(D, Q, K, V)
 
     return p0, J_reshaped, F
 end
+
