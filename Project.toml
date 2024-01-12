@@ -1,4 +1,4 @@
-name = "AttentionBasedPlmDCA"
+name = "AttentionDCA"
 uuid = "501c1ba2-c59e-46b0-b79a-24a850114dc9"
 authors = ["Francesco Caredda, Andrea Pagnani,  Politecnico di Torino"]
 version = "0.1.0"
