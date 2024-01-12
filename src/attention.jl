@@ -1,3 +1,4 @@
+#prova
 function loss(Q::Array{Float64, 3},
     K::Array{Float64, 3},
     V::Array{Float64, 3}, 
@@ -15,6 +16,7 @@ function loss(Q::Array{Float64, 3},
 
     @tullio pl = weights[m]*(mat_ene[Z[r,m],r,m] - lge[r,m])
     pl = -1*pl
+    #reg = λ*((sum(abs2, sf)) + sum(abs2, V))
     reg = λ*(sum(abs2, J))
     
     pl = pl + reg
