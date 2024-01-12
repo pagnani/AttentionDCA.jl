@@ -1,7 +1,7 @@
 function attention_matrix_sym(Q,K)
     H,_,N = size(Q)
     @tullio sf[h,i,j] := Q[h,d,i]*K[h,d,j]
-    sf = AttentionBasedPlmDCA.softmax(sf,dims=3)
+    sf = AttentionDCA.softmax(sf,dims=3)
     @tullio sf[h,i,j] *= (i!=j)
     
     W = zeros(H,N,N)
@@ -17,7 +17,7 @@ end
 function attention_matrix_asym(Q,K)
     H,_,N = size(Q)
     @tullio sf[h,i,j] := Q[h,d,i]*K[h,d,j]
-    sf = AttentionBasedPlmDCA.softmax(sf,dims=3)
+    sf = AttentionDCA.softmax(sf,dims=3)
     @tullio sf[h,i,j] *= (i!=j)
     
     return sf
@@ -163,7 +163,7 @@ function ar_freezedVtrainer(D::Tuple{Matrix{Int}, Vector{Float64}}, V, n_epochs:
     @tullio W[h, i, j] := m.Q[h,d,i]*m.K[h,d,j]
     W = softmax(W,dims=3) 
     @tullio J[i,j,a,b] := W[h,i,j]*V[h,a,b]*(j<i)
-    J_reshaped = AttentionBasedPlmDCA.reshapetensor(J,N,q)
+    J_reshaped = AttentionDCA.reshapetensor(J,N,q)
     F = [zeros(q) for _ in 1:N-1]
     
     arnet = ArNet(idxperm, p0, J_reshaped,F)
@@ -244,7 +244,7 @@ function my_epistatic_score(Q,K,V, arvar;
 
     for h in 1:H 
         @tullio J[i,j,a,b] := W[$h,i,j]*V[$h,a,b]*(j<i)
-        J_reshaped = AttentionBasedPlmDCA.reshapetensor(J,N,q)
+        J_reshaped = AttentionDCA.reshapetensor(J,N,q)
         F = [zeros(q) for _ in 1:N-1]
         arnet = ArNet(idxperm, p0, J_reshaped,F)
         push!(all_ep_score, epistatic_score(arnet, arvar, rand(1:N), min_separation = min_separation))

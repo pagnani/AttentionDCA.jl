@@ -100,7 +100,7 @@ end
 function stat_multi_trainer(filenames::Vector{String}, n_sim::Int, H, d;
     n_epochs = 100,
     kwds...)
-    D = AttentionBasedPlmDCA.quickread.(filenames)
+    D = AttentionDCA.quickread.(filenames)
     s = [[] for _ in eachindex(filenames)]
     for _ in 1:n_sim
         m = multi_trainer(D, n_epochs, H, d; kwds...)
@@ -280,7 +280,7 @@ function compute_p0_J_F(D, Q, K, V)
     @tullio W[h, i, j] := Q[h,d,i]*K[h,d,j]
     W = softmax(W,dims=3) 
     @tullio J[i,j,a,b] := W[h,i,j]*V[h,a,b]*(j<i)
-    J_reshaped = AttentionBasedPlmDCA.reshapetensor(J,N,q)
+    J_reshaped = AttentionDCA.reshapetensor(J,N,q)
     F = [zeros(q) for _ in 1:N-1]
 
     return p0, J_reshaped, F

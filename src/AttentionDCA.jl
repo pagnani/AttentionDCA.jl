@@ -1,4 +1,4 @@
-module AttentionBasedPlmDCA
+module AttentionDCA
 using Printf, LinearAlgebra, Statistics, Tullio, PottsGauge, Random
 #using NLopt
 #using KernelAbstractions

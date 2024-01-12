@@ -125,7 +125,7 @@ function artrainer(D::Tuple{Matrix{Int}, Vector{Float64}}, n_epochs::Int, idxper
     @tullio W[h, i, j] := m.Q[h,d,i]*m.K[h,d,j]
     W = softmax(W,dims=3) 
     @tullio J[i,j,a,b] := W[h,i,j]*m.V[h,a,b]*(j<i)
-    J_reshaped = AttentionBasedPlmDCA.reshapetensor(J,N,q)
+    J_reshaped = AttentionDCA.reshapetensor(J,N,q)
     F = [zeros(q) for _ in 1:N-1]
     
     arnet = ArNet(idxperm, p0, J_reshaped,F)
@@ -191,7 +191,7 @@ function arloss2(Q::Array{Float64, 3},
     @tullio J[i,j,a,b] := sf[i,j,h]*V[h,a,b]*(i!=1)
    
     @tullio mat_ene[a,r,m] := J[r,j,a,Z[j,m]]
-    lge = AttentionBasedPlmDCA.logsumexp(mat_ene,dims=1)[1,:,:]
+    lge = AttentionDCA.logsumexp(mat_ene,dims=1)[1,:,:]
 
     @tullio pl = weights[m]*(mat_ene[Z[r,m],r,m] - lge[r,m])
     pl = -1*pl
@@ -253,7 +253,7 @@ function artrainer2(D::Tuple{Matrix{Int}, Vector{Float64}}, n_epochs::Int, idxpe
     @tullio W[h, i, j] := m.Q[h,d,i]*m.K[h,d,j] - 1.0e8*(j>=i)
     W = softmax(W,dims=3)
     @tullio J[i,j,a,b] := W[h,i,j]*m.V[h,a,b]*(i!=1)
-    J_reshaped = AttentionBasedPlmDCA.reshapetensor(J,N,q)
+    J_reshaped = AttentionDCA.reshapetensor(J,N,q)
     F = [zeros(q) for _ in 1:N-1]
     
     arnet = ArNet(idxperm, p0, J_reshaped, F)
@@ -305,7 +305,7 @@ end
 function stat_artrainer(filename::String, n_sim::Int;
     n_epochs = 100,
     kwds...)
-    Z,W = AttentionBasedPlmDCA.quickread(filename)
+    Z,W = AttentionDCA.quickread(filename)
     s = []
     for _ in 1:n_sim
         m = artrainer((Z,W), n_epochs, [1:size(Z,1);]; kwds...)
