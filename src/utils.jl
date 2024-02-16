@@ -1,47 +1,13 @@
-function optimfunwrapper(g::Vector,x::Vector, var::Union{AttPlmVar,FieldAttPlmVar})
-    g === nothing && (g = zeros(Float64, length(x)))
-    return pl_and_grad!(g, x, var)
-end
-
-function ar_optimfunwrapperfactored(g::Vector{Float64},x::Vector{Float64}, var::Union{AttPlmVar, FieldAttPlmVar})
-    g === nothing && (g = zeros(Float64, length(x)))
-    return ar_pl_and_grad!(g, x, var)
-end
-
-function att_param(r,N;q=21)
-    L = number_plm(N,q=q)
-    d = sqrt(q^4 + 8*N*L*r) - q^2
-    d = d/(2*N)
-    return L, d
-end 
-
-function counter_to_index(l::Int, N::Int, d:: Int, Q::Int, H::Int; verbose::Bool=false)
-    h::Int = 0
-    if l <= H*N*d
-        i::Int = ceil(l/(d*H))
-        l = l-(d*H)*(i-1)
-        m::Int = ceil(l/H)
-        h = l-H*(m-1)
-        verbose && println("h = $h \nm = $m \ni = $i")
-        return h,m,i
-    elseif H*N*d < l <= 2*H*N*d 
-        l-=d*N*H
-        j::Int = ceil(l/(d*H))
-        l-=(d*H)*(j-1)
-        n::Int = ceil(l/H)
-        h = l-H*(n-1)
-        verbose && println("h = $h \nn = $n \nj = $j")
-        return h, n, j
+function softmax_notinplace(x::AbstractArray; dims = 1)
+    max_ = maximum(x; dims)
+    if all(isfinite, max_)
+        @fastmath out = exp.(x .- max_)
     else
-        l-=2*N*d*H
-        b::Int = ceil(l/(Q*H))
-        l-=(Q*H)*(b-1)
-        a::Int = ceil(l/H)
-        h = l-H*(a-1)
-        verbose && println("h = $h \na = $a \nb = $b \n")
-        return h, a, b
+        @fastmath @. out = ifelse(isequal(max_,Inf), ifelse(isequal(x,Inf), 1, 0), exp(x - max_))
     end
+    return out ./ sum(out; dims)
 end
+
 
 function logsumexp(a::AbstractArray{<:Real}; dims=1)
     m = maximum(a; dims=dims)
@@ -70,7 +36,13 @@ function ReadFasta(filename::AbstractString,max_gap_fraction::Real, theta::Any, 
     return W,Zint,N,M,q
 end
 
-function L2Tensor(matrix::AbstractArray{T}) where T <: Float64
+function quickread(fastafile; moreinfo=false)  
+    Weights, Z, N, M, _ = ReadFasta(fastafile, 0.9, :auto, true, verbose = false);
+    moreinfo && return Weights, Z, N, M
+    return Z, Weights
+end
+
+function L2Tensor(matrix::AbstractArray{T}) where T <: Real
     L2 = 0.0
     for x in matrix
         L2 += x*x 
@@ -87,17 +59,6 @@ function reshapetensor(J::Array{Float64, 4}, N::Int, q::Int)
         push!(newJ,Jscra)
     end
     return newJ
-end
-
-function computep0(var::Union{AttPlmVar,FieldAttPlmVar})
-    W = var.W
-    Z = var.Z 
-    q = var.q 
-    p0 = zeros(q)
-    for i in 1:eachindex(W)
-        p0[Z[1, i]] += W[i]
-    end
-    p0
 end
 
 function computep0(D; q::Int = 21)
@@ -166,13 +127,6 @@ function L2reg(Q::AbstractArray{Float64,3},K::AbstractArray{Float64,3},V::Abstra
 
     λ = lambda / numpar
     return λ*l2
-end
-
-# function L2reg(out::AttPlmOut, lambda) 
-#     return L2reg(out.Q::AbstractArray{Float64,3},out.K::AbstractArray{Float64,3},out.V::AbstractArray{Float64,3}, lambda)
-# end
-function L2reg(out::AttOut, lambda) 
-    return L2reg(out.Q::AbstractArray{Float64,3},out.K::AbstractArray{Float64,3},out.V::AbstractArray{Float64,3}, lambda)
 end
 
 function L2reg(J::AbstractArray{Float64,4}, lambda)

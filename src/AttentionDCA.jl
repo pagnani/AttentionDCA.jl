@@ -1,32 +1,27 @@
 module AttentionDCA
-using Printf, LinearAlgebra, Statistics, Tullio, PottsGauge, Random
-#using NLopt
-#using KernelAbstractions
-import DCAUtils: read_fasta_alignment, remove_duplicate_sequences, compute_weights, add_pseudocount, compute_weighted_frequencies
-using LoopVectorization
-using PrecompileTools
-using DelimitedFiles: readdlm
-import Flux
-import Flux: DataLoader, Adam, gradient
-import Flux.Optimise: update! 
+
+import DCAUtils: compute_weighted_frequencies, compute_weights, read_fasta_alignment, remove_duplicate_sequences
+import Flux: Adam, DataLoader, gradient
+import Flux.Optimise: update!
 import Flux.Optimisers: setup
-import Distributions: wsample
-using ExtractMacro
-using ArDCA
+
+using ArDCA, PottsGauge
+using DelimitedFiles: readdlm
+using ExtractMacro, Printf
+using LinearAlgebra, Tullio, LoopVectorization
+using PrecompileTools
+using Random
 
 
-export AttOut, AttPlmVar, score, compute_freq, compute_PPV, L2reg, sample, trainer, artrainer, artrainer2, attention_matrix_asym, attention_matrix_sym
 
-include("types.jl")
-include("gauge.jl")
+export trainer, stat_trainer, artrainer, stat_artrainer, multi_trainer, multi_artrainer, stat_multi_trainer
+export score, compute_freq, compute_PPV, sample, quickread
+
+
 include("utils.jl")
 include("dcascore.jl")
-include("gradient_test.jl")
 include("attention.jl")
-include("attention_analysis_utils.jl")
 include("multifam.jl")
-#include("stochastic.jl")
 include("autoregressive.jl")
-#include("newfile.jl")
 #include("precompile.jl")
 end

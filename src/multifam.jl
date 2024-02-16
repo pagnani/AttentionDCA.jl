@@ -4,6 +4,7 @@ function multi_trainer(D::Vector{Tuple{Matrix{Int}, Vector{Float64}}}, n_epochs:
     n_batches = 50, 
     init = rand,
     λ::Union{Float64,Vector{Float64}}=fill(0.001,length(D)), 
+    verbose = true,
     savefile::Union{String, Nothing} = nothing)
 
     NF = length(D)
@@ -17,7 +18,7 @@ function multi_trainer(D::Vector{Tuple{Matrix{Int}, Vector{Float64}}}, n_epochs:
 
     #controlli vari
     length(d) == NF || error("Wrong number of d values")
-    
+
     #creazione arvar per ogni famiglia
     q = maximum(D[1][1])
     Ns = zeros(Int, NF)
@@ -37,7 +38,7 @@ function multi_trainer(D::Vector{Tuple{Matrix{Int}, Vector{Float64}}}, n_epochs:
     t = setup(Adam(η), m)
 
     savefile !== nothing && (file = open(savefile,"a"))
-    
+
     loaders = Vector{Any}(undef, NF)
     for i in 1:maximum(n_epochs)
         flags = i .<= n_epochs
@@ -48,25 +49,23 @@ function multi_trainer(D::Vector{Tuple{Matrix{Int}, Vector{Float64}}}, n_epochs:
         for pf in loader
             ws = [pf[m][2]/sum(pf[m][2]) for m in 1:NF]
             Zs = [pf[m][1] for m in 1:NF] 
-            g = gradient(x->multi_loss(x.Qs[flags], x.Ks[flags], x.V, Zs[flags], ws[flags], λ = λ[flags], ar = false),m)[1]
-            #if sum(flags) != 0.0
-            #    g.Qs[flags] = zeros.(H,d[flags], Ns[flags])
-            #    g.Ks[flags] = zeros.(H,d[flags], Ns[flags])
-            #end
+            g = gradient(x->multi_loss(x.Qs[flags], x.Ks[flags], x.V, Zs[flags], ws[flags], λ = λ[flags], ar = false), m)[1]
             update!(t,m,g)
-            #println(sum(m.Qs[1]),"   ",sum(m.Ks[1]),"   ",sum(m.Qs[2]),"   ",sum(m.Ks[2]),"   ", sum(m.V))
         end
 
 
         losses = [round(loss(m.Qs[i], m.Ks[i], m.V, D[i][1], D[i][2],  λ=λ[i]),digits=5) for i in 1:NF]
-        print("Epoch $i ") 
-        [print("loss PF$n = $(losses[n]), ") for n in 1:NF]
-        println("-> Total loss = $(round(sum(losses),digits=5))")
-        
-        savefile !== nothing && println("total loss = $(round(sum(losses),digits=5)))")    
+        if verbose
+            print("Epoch $i") 
+            [print(" loss PF$n = $(losses[n])") for n in 1:NF]
+            println(" -> Total loss = $(round(sum(losses),digits=5))")
+        end
+        savefile !== nothing && print(file, "Epoch $i")
+        savefile !== nothing && [print(file, " loss PF$n = $(losses[n])") for n in 1:NF]  
+        savefile !== nothing && print(file, " -> Total loss = $(round(sum(losses),digits=5))\n")
     end
-    savefile !== nothing && close(file)
 
+    savefile !== nothing && close(file)
     return m
 
 
@@ -77,6 +76,7 @@ function multi_trainer(filenames::Vector{String}, n_epochs::Union{Int,Vector{Int
     theta::Union{Symbol,Real}=:auto,
     max_gap_fraction::Real=0.9,
     remove_dups::Bool=true,
+    verbose = true,
     kwds...)
 
     Nf = length(filenames)
@@ -85,25 +85,26 @@ function multi_trainer(filenames::Vector{String}, n_epochs::Union{Int,Vector{Int
     Ns = zeros(Int, Nf) 
 
     for i in 1:Nf
-        _W, _Z, Ns[i], _, _ = ReadFasta(filenames[i], max_gap_fraction, theta, remove_dups)
+        _W, _Z, Ns[i], _, _ = ReadFasta(filenames[i], max_gap_fraction, theta, remove_dups, verbose = verbose)
         push!(Zs, _Z)
         push!(Ws, _W)
     end
 
     data = [(Zs[i],Ws[i]) for i in 1:Nf]
 
-    multi_trainer(data, n_epochs, H, d; kwds...)
+    multi_trainer(data, n_epochs, H, d; verbose = verbose, kwds...)
 
 end
 
 
 function stat_multi_trainer(filenames::Vector{String}, n_sim::Int, H, d;
     n_epochs = 100,
+    verbose = true,
     kwds...)
     D = AttentionDCA.quickread.(filenames)
     s = [[] for _ in eachindex(filenames)]
     for _ in 1:n_sim
-        m = multi_trainer(D, n_epochs, H, d; kwds...)
+        m = multi_trainer(D, n_epochs, H, d; verbose = verbose, kwds...)
         for i in eachindex(filenames)
             push!(s[i],score(m.Qs[i],m.Ks[i],m.V))
         end
@@ -112,19 +113,19 @@ function stat_multi_trainer(filenames::Vector{String}, n_sim::Int, H, d;
         s[i] = vcat(s[i]...)
         s[i] = unique(x->x[1:2],sort(s[i], by = x -> x[3], rev = true))
     end 
-    
+
     return Vector{Tuple{Int64, Int64, Float64}}.(s)
 end
 
 
 
 function multi_artrainer(D::Vector{Tuple{Matrix{Int}, Vector{Float64}}}, n_epochs::Union{Int,Vector{Int}}, H::Int, d::Vector{Int}, idxperm::Vector{Vector{Int}};
-
     init_m = Nothing,
     η = 0.005, 
     n_batches = 50, 
     init = rand,
     λ::Union{Float64,Vector{Float64}}=fill(0.001,length(D)), 
+    verbose = true,
     savefile::Union{String, Nothing} = nothing)
 
     NF = length(D)
@@ -136,11 +137,11 @@ function multi_artrainer(D::Vector{Tuple{Matrix{Int}, Vector{Float64}}}, n_epoch
         n_epochs = fill(n_epochs, NF)
     end
 
-    #controlli vari
+    #Various checks
     length(d) == NF || error("Wrong number of d values")
     length(idxperm) == NF || error("Wrong number of idxperm arrays")
 
-    #creazione arvar per ogni famiglia
+    #Creation of ArVar for each family
     q = maximum(D[1][1])
     Ns = zeros(Int, NF)
     Ms = zeros(Int, NF)
@@ -161,7 +162,7 @@ function multi_artrainer(D::Vector{Tuple{Matrix{Int}, Vector{Float64}}}, n_epoch
     t = setup(Adam(η), m)
 
     savefile !== nothing && (file = open(savefile,"a"))
-    
+
     loaders = Vector{Any}(undef, NF)
     for i in 1:maximum(n_epochs)
         flags = i .<= n_epochs
@@ -173,21 +174,18 @@ function multi_artrainer(D::Vector{Tuple{Matrix{Int}, Vector{Float64}}}, n_epoch
             ws = [pf[m][2]/sum(pf[m][2]) for m in 1:NF]
             Zs = [pf[m][1] for m in 1:NF] 
             g = gradient(x->multi_loss(x.Qs[flags], x.Ks[flags], x.V, Zs[flags], ws[flags], λ = λ[flags]),m)[1]
-            #if sum(flags) != 0.0
-            #    g.Qs[flags] = zeros.(H,d[flags], Ns[flags])
-            #    g.Ks[flags] = zeros.(H,d[flags], Ns[flags])
-            #end
+            
             update!(t,m,g)
-            #println(sum(m.Qs[1]),"   ",sum(m.Ks[1]),"   ",sum(m.Qs[2]),"   ",sum(m.Ks[2]),"   ", sum(m.V))
         end
 
 
         losses = [round(arloss(m.Qs[i], m.Ks[i], m.V, D[i][1], D[i][2],  λ=λ[i]),digits=5) for i in 1:NF]
-        print("Epoch $i ") 
-        [print("loss PF$n = $(losses[n]), ") for n in 1:NF]
-        println("-> Total loss = $(round(sum(losses),digits=5))")
-        
-        savefile !== nothing && println("total loss = $(round(sum(losses),digits=5)))")    
+        if verbose
+            print("Epoch $i ") 
+            [print("loss PF$n = $(losses[n]), ") for n in 1:NF]
+            println("-> Total loss = $(round(sum(losses),digits=5))")
+        end
+        savefile !== nothing && println(file, "Total loss = $(round(sum(losses),digits=5)))")    
     end
     savefile !== nothing && close(file)
 
@@ -205,6 +203,7 @@ function multi_artrainer(filenames::Vector{String}, n_epochs::Union{Int,Vector{I
     theta::Union{Symbol,Real}=:auto,
     max_gap_fraction::Real=0.9,
     remove_dups::Bool=true,
+    verbose = true,
     kwds...)
 
     Nf = length(filenames)
@@ -213,7 +212,7 @@ function multi_artrainer(filenames::Vector{String}, n_epochs::Union{Int,Vector{I
     Ns = zeros(Int, Nf) 
 
     for i in 1:Nf
-        _W, _Z, Ns[i], _, _ = ReadFasta(filenames[i], max_gap_fraction, theta, remove_dups)
+        _W, _Z, Ns[i], _, _ = ReadFasta(filenames[i], max_gap_fraction, theta, remove_dups, verbose = verbose)
         push!(Zs, _Z)
         push!(Ws, _W)
     end
@@ -222,18 +221,18 @@ function multi_artrainer(filenames::Vector{String}, n_epochs::Union{Int,Vector{I
 
     data = [(Zs[i],Ws[i]) for i in 1:Nf]
 
-    multi_artrainer(data, n_epochs, H, d, idxperm; kwds...)
+multi_artrainer(data, n_epochs, H, d, idxperm; verbose = verbose, kwds...)
 
 end
 
 function multi_loss(Qs, Ks, V, Zs, Ws; λ = λ, ar = true)
-    
+
     if ar == true 
         foo = arloss
     else 
         foo = loss  
     end
-    
+
     Nf = length(Qs)
 
     tot_loss = 0.0
@@ -271,7 +270,6 @@ function check_permorder(permorder,Z,W)
     return idxperm
 
 end
-
 
 function compute_p0_J_F(D, Q, K, V)
     N = size(Q,3)

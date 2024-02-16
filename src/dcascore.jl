@@ -10,7 +10,6 @@ end
 
 function compute_referencescore(score,dist::Dict; mindist::Int=6, cutoff::Number=8.0)
     nc2 = length(score)
-    #nc2 == size(d,1) || throw(DimensionMismatch("incompatible length $nc2 $(size(d,1))"))
     out = Tuple{Int,Int,Float64,Float64}[]
     ctrtot = 0
     ctr = 0
@@ -43,16 +42,14 @@ function score(Q, K, V; min_separation::Int=6)
 
     Jt = 0.5 * (Jtens + permutedims(Jtens,[2,1,4,3]))
 
-    # Jmat = reshape(permutedims(Jtens,[1,4,2,3]),L*q,L*q)
-
-    # Jmatsym = (Jmat .+ Jmat') ./ 2
-    #Jt = permutedims(reshape(Jtenssymm, q, L, q, L), [1, 3, 4, 2]) 
     ht = zeros(eltype(Jt), q, L)
     Jzsg, _ = gauge(Jt, ht, ZeroSumGauge())
     FN = compute_fn(Jzsg)
     FNapc = correct_APC(FN)
     return compute_ranking(FNapc, min_separation)
 end
+
+score(m::NamedTuple; min_separation::Int=6) = score(m..., min_separation = min_separation)
 
 function score(Jtens; min_separation::Int=6)
     q,q,L,L = size(Jtens)
@@ -65,7 +62,6 @@ function score(Jtens; min_separation::Int=6)
     FNapc = correct_APC(FN)
     return compute_ranking(FNapc, min_separation)
 end
-
 
 function compute_fn(J::AbstractArray{T,4}) where {T<:AbstractFloat}
     q, q, L, L = size(J)
@@ -106,6 +102,15 @@ function compute_ranking(S::Matrix{Float64}, min_separation::Int = 6)
     return R 
 end
 
+function compute_PPV(score::Vector{Tuple{Int,Int,Float64}}, filestruct::String; min_separation::Int = 6)
+    dist = compute_residue_pair_dist(filestruct)
+    return map(x->x[4], compute_referencescore(score, dist, mindist = min_separation))
+end
+
+function compute_PPV(arnet::ArDCA.ArNet, arvar::ArDCA.ArVar, seqid::Int64, filestruct::String; pc::Float64=0.1,min_separation::Int=6)
+    score = ArDCA.epistatic_score(arnet, arvar, seqid, pc = pc, min_separation = min_separation)
+    return compute_PPV(score, filestruct, min_separation = min_separation)
+end
 
 function compute_actualPPV(filestruct;cutoff=8.0,min_separation=6)
     distances=readdlm(filestruct)
@@ -129,23 +134,4 @@ function compute_actualPPV(filestruct;cutoff=8.0,min_separation=6)
     scra = map(x->l/x,[l+1:(L-trivial_contacts);])
     return vcat(x,scra) 
     
-end
-
-function compute_PPV(Out::Union{AttOut},filestruct; min_separation::Int = 6)
-    @extract Out: Q K V
-    
-    dist = compute_residue_pair_dist(filestruct)
-    _score = score(Q, K, V, min_separation = min_separation) 
-    return map(x->x[4], compute_referencescore(_score, dist; mindist = min_separation))
-
-end 
-
-function compute_PPV(score::Vector{Tuple{Int,Int,Float64}}, filestruct::String; min_separation::Int = 6)
-    dist = compute_residue_pair_dist(filestruct)
-    return map(x->x[4], compute_referencescore(score, dist, mindist = min_separation))
-end
-
-function compute_PPV(arnet::ArDCA.ArNet, arvar::ArDCA.ArVar, seqid::Int64, filestruct::String; pc::Float64=0.1,min_separation::Int=6)
-    score = ArDCA.epistatic_score(arnet, arvar, seqid, pc = pc, min_separation = min_separation)
-    return compute_PPV(score, filestruct, min_separation = min_separation)
 end
