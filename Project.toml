@@ -1,6 +1,6 @@
 name = "AttentionDCA"
 uuid = "501c1ba2-c59e-46b0-b79a-24a850114dc9"
-authors = ["Francesco Caredda, Andrea Pagnani,  Politecnico di Torino"]
+authors = ["Francesco Caredda, Andrea Pagnani, Politecnico di Torino"]
 version = "0.1.0"
 
 [deps]
@@ -12,18 +12,15 @@ ExtractMacro = "f86d3d12-fd5b-522c-99e9-61577282a1e9"
 Flux = "587475ba-b771-5e3f-ad9e-33799f191a9c"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 LoopVectorization = "bdcacae8-1622-11e9-2a5c-532679323890"
-PlmDCA = "06784e46-84fc-5582-b8de-0e984192b79e"
 PottsGauge = "3bb3bcb6-c561-57d3-939c-408d524c1e5b"
 PrecompileTools = "aea7be01-6a6a-4083-8856-8a6e6704d82a"
 Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
-Revise = "295af30f-e4ad-537b-8983-00126c2a3abe"
 Tullio = "bc48ee85-29a4-5162-ae0b-a64e1601d4bc"
 
 [compat]
 ArDCA = "0.6"
-PlmDCA = "1"
-julia = "1.7"
+julia = "1.9"
 
 [extras]
 CPUSummary = "2a0fbf3d-bb9c-48f3-b0a9-814d99fd7ab9"
