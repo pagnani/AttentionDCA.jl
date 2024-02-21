@@ -12,7 +12,7 @@ function loss(Q::Array{T1, 3},
     
     #compute J tensor
     @tullio J[i,j,a,b] := sf[i,j,h]*V[h,a,b]*(j!=i)
-   
+
     #compute the energy of the sequences and the partition function
     @tullio mat_ene[a,r,m] := J[r,j,a,Z[j,m]]
     lge = logsumexp(mat_ene,dims=1)[1,:,:]
