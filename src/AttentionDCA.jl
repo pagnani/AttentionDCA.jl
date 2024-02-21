@@ -23,5 +23,5 @@ include("dcascore.jl")
 include("attention.jl")
 include("multifam.jl")
 include("autoregressive.jl")
-include("loss_gradient_tests.jl")
+#include("precompile.jl")
 end
