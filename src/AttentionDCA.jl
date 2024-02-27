@@ -10,7 +10,8 @@ using DelimitedFiles: readdlm
 using ExtractMacro, Printf
 using LinearAlgebra, Tullio, LoopVectorization
 using PrecompileTools
-using Random
+using Random, Statistics
+
 
 
 
@@ -24,4 +25,6 @@ include("attention.jl")
 include("multifam.jl")
 include("autoregressive.jl")
 #include("precompile.jl")
+#include("embedding.jl")
+include("embedding_KL.jl")
 end
