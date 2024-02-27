@@ -32,30 +32,30 @@ function log0(x)
     end
 end
 
-function my_loss(m::NamedTuple{(:Wq, :Wk, :Wv)}, Z::Matrix{T1}, weigths::Vector{T2}; H = 2, q = maximum(Z)) where {T1 <: Integer, T2 <: Real}
-    N = size(Z,1)
-    M = size(Z,2)
+# function my_loss(m::NamedTuple{(:Wq, :Wk, :Wv)}, Z::Matrix{T1}, weigths::Vector{T2}; H = 2, q = maximum(Z)) where {T1 <: Integer, T2 <: Real}
+#     N = size(Z,1)
+#     M = size(Z,2)
     
-    H,de,d = size(m.Wq)
-    Zoh = one_hot(Z) #q,L,M
+#     H,de,d = size(m.Wq)
+#     Zoh = one_hot(Z) #q,L,M
 
-    size(Zoh,1) == de || error("The size of the one hot encoding is not the same as the first dimension of Wq")
+#     size(Zoh,1) == de || error("The size of the one hot encoding is not the same as the first dimension of Wq")
 
-    @tullio Q[h,i,d2,m] := Zoh[d1,i,m]*m.Wq[h,d1,d2]
-    @tullio K[h,i,d2,m] := Zoh[d1,i,m]*m.Wk[h,d1,d2]
-    @tullio V[h,i,d2,m] := Zoh[d1,i,m]*m.Wv[h,d1,d2]
-    @tullio A[h,i,j] := Q[h,i,d,m]*K[h,j,d,m]
-    A = softmax_notinplace(A/M, dims = 3)
-    @tullio Y[h,d,i,m] := A[h,i,j]*V[h,j,d,m]
-    _Y = dropdims(sum(Y, dims=1),dims=1) / H
-    Y = softmax_notinplace(_Y, dims = 1)
-    Zoh = reshape(Zoh, q*N, M) #qL,M
-    Y = reshape(Y, q*N, M) #qL,M
-    @tullio loss[m] := Zoh[l,m]*log(Y[l,m])
-    return -loss'*weigths
-end
+#     @tullio Q[h,i,d2,m] := Zoh[d1,i,m]*m.Wq[h,d1,d2]
+#     @tullio K[h,i,d2,m] := Zoh[d1,i,m]*m.Wk[h,d1,d2]
+#     @tullio V[h,i,d2,m] := Zoh[d1,i,m]*m.Wv[h,d1,d2]
+#     @tullio A[h,i,j] := Q[h,i,d,m]*K[h,j,d,m]
+#     A = softmax_notinplace(A/M, dims = 3)
+#     @tullio Y[h,d,i,m] := A[h,i,j]*V[h,j,d,m]
+#     _Y = dropdims(sum(Y, dims=1),dims=1) / H
+#     Y = softmax_notinplace(_Y, dims = 1)
+#     Zoh = reshape(Zoh, q*N, M) #qL,M
+#     Y = reshape(Y, q*N, M) #qL,M
+#     @tullio loss[m] := Zoh[l,m]*log(Y[l,m])
+#     return -loss'*weigths
+# end
 
-function my_loss2(m::NamedTuple{(:Wq, :Wk, :Wv)}, Z::Matrix{T1}, weigths::Vector{T2}; H = 2, q = maximum(Z)) where {T1 <: Integer, T2 <: Real}
+function my_loss(m::NamedTuple{(:Wq, :Wk, :Wv)}, Z::Matrix{T1}, weigths::Vector{T2}; q = maximum(Z)) where {T1 <: Integer, T2 <: Real}
     N = size(Z,1)
     M = size(Z,2)
     
@@ -74,14 +74,12 @@ function my_loss2(m::NamedTuple{(:Wq, :Wk, :Wv)}, Z::Matrix{T1}, weigths::Vector
     Y = softmax_notinplace(_Y/H, dims = 1)
     @tullio loss := Zoh[d,i,m] * log(Y[d,i,m]) * weigths[m]
     return -loss
-    # Zoh = reshape(Zoh, q*N, M) #qL,M
-    # Y = reshape(Y, q*N, M) #qL,M
-    # @tullio loss[m] := Zoh[l,m]*log(Y[l,m])
-    # return  -loss'*weigths
 end
+
 function my_trainer(D::Tuple{Matrix{T1}, Vector{T2}},n_epochs::Int; 
     H::Int = 32,
-    d::Int = 23,
+    d::Int = 21,
+    q::Int = 21,
     batch_size::Int = 1000,
     η::Float64 = 0.005,
     λ::Float64 = 0.001,
@@ -92,12 +90,11 @@ function my_trainer(D::Tuple{Matrix{T1}, Vector{T2}},n_epochs::Int;
     savefile::Union{String, Nothing} = nothing) where {T1<:Integer, T2<:Real}
     
     N,_ = size(D[1])
-    q = maximum(D[1])
 
     m = if init_m !== nothing
         init_m
     else
-        (Wq = init_fun(H,q,d), Wk = init_fun(H,q,d), Wv = init_fun(H,q,q))
+        (Wq = init_fun(q,d,H), Wk = init_fun(q,d,H), Wv = init_fun(q,q,H))
     end
     t = setup(Adam(η), m)
 
@@ -107,16 +104,15 @@ function my_trainer(D::Tuple{Matrix{T1}, Vector{T2}},n_epochs::Int;
         loader = DataLoader(D, batchsize = batch_size, shuffle = true)
         for (z,w) in loader
             _w = w/sum(w)
-            g = gradient(x->my_loss(x, z, _w, H = H),m)[1];
+            g = gradient(x->my_loss(x, z, _w),m)[1];
             update!(t,m,g)
         end
 
-        #s = score(m.Q,m.K,m.V);
         PPV = ppv_attention(m,D[1],structfile)
         l = round(my_loss(m, D[1], D[2]),digits=5) 
         p = round((PPV[N]),digits=3)
         verbose && println("Epoch $i loss = $l \t PPV@L = $p \t First Error = $(findfirst(x->x!=1, PPV))")
-        #savefile !== nothing && println(file, "Epoch $i loss = $l \t PPV@L = $p \t First Error = $(findfirst(x->x!=1, PPV))")
+        savefile !== nothing && println(file, "Epoch $i loss = $l \t PPV@L = $p \t First Error = $(findfirst(x->x!=1, PPV))")
     end
 
     savefile !== nothing && close(file)
@@ -128,14 +124,19 @@ function ppv_attention(m::NamedTuple{(:Wq, :Wk, :Wv)}, Z::Matrix{T1}, structfile
     Zoh = one_hot(Z) #q,L,M
     M = size(Z,2)
 
-    @tullio Q[h,i,d2,m] := Zoh[d1,i,m]*m.Wq[h,d1,d2]
-    @tullio K[h,i,d2,m] := Zoh[d1,i,m]*m.Wk[h,d1,d2]
+    # @tullio Q[h,i,d2,m] := Zoh[d1,i,m]*m.Wq[h,d1,d2]
+    # @tullio K[h,i,d2,m] := Zoh[d1,i,m]*m.Wk[h,d1,d2]
 
-    @tullio A[h,i,j] := Q[h,i,d,m]*K[h,j,d,m]
-    A = softmax_notinplace(A/M, dims = 3)
+    # @tullio A[h,i,j] := Q[h,i,d,m]*K[h,j,d,m]
+    # A = softmax_notinplace(A/M, dims = 3)
+
+    @tullio Q[i,d2,m,h] := Zoh[d1,i,m]*m.Wq[d1,d2,h]
+    @tullio K[i,d2,m,h] := Zoh[d1,i,m]*m.Wk[d1,d2,h]
+    @tullio A[i,j,h] := Q[i,d,m,h]*K[j,d,m,h]
+    A = softmax_notinplace(A/M, dims = 2)
 
 
-    M = version(A, dims = 1)[1,:,:]
+    M = version(A, dims = 3)[:,:,1]
     M = (M + M')/2
     if APC 
         M = AttentionDCA.correct_APC(M)
