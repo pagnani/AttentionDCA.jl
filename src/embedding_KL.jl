@@ -44,20 +44,41 @@ function my_loss(m::NamedTuple{(:Wq, :Wk, :Wv)}, Z::Matrix{T1}, weigths::Vector{
     @tullio Q[h,i,d2,m] := Zoh[d1,i,m]*m.Wq[h,d1,d2]
     @tullio K[h,i,d2,m] := Zoh[d1,i,m]*m.Wk[h,d1,d2]
     @tullio V[h,i,d2,m] := Zoh[d1,i,m]*m.Wv[h,d1,d2]
-
     @tullio A[h,i,j] := Q[h,i,d,m]*K[h,j,d,m]
     A = softmax_notinplace(A/M, dims = 3)
     @tullio Y[h,d,i,m] := A[h,i,j]*V[h,j,d,m]
-    Y = softmax_notinplace(sum(Y,dims=1)[1,:,:,:]/H, dims = 2)
-
+    _Y = dropdims(sum(Y, dims=1),dims=1) / H
+    Y = softmax_notinplace(_Y, dims = 1)
     Zoh = reshape(Zoh, q*N, M) #qL,M
     Y = reshape(Y, q*N, M) #qL,M
- 
     @tullio loss[m] := Zoh[l,m]*log(Y[l,m])
-    loss = -loss'*weigths
-    return loss
+    return -loss'*weigths
 end
 
+function my_loss2(m::NamedTuple{(:Wq, :Wk, :Wv)}, Z::Matrix{T1}, weigths::Vector{T2}; H = 2, q = maximum(Z)) where {T1 <: Integer, T2 <: Real}
+    N = size(Z,1)
+    M = size(Z,2)
+    
+    de,d,H = size(m.Wq)
+    Zoh = one_hot(Z) #q,L,M
+
+    size(Zoh,1) == de || error("The size of the one hot encoding is not the same as the first dimension of Wq")
+
+    @tullio Q[i,d2,m,h] := Zoh[d1,i,m]*m.Wq[d1,d2,h]
+    @tullio K[i,d2,m,h] := Zoh[d1,i,m]*m.Wk[d1,d2,h]
+    @tullio V[i,d2,m,h] := Zoh[d1,i,m]*m.Wv[d1,d2,h]
+    @tullio A[i,j,h] := Q[i,d,m,h]*K[j,d,m,h]
+    A = softmax_notinplace(A/M, dims = 2)
+    @tullio Y[d,i,m,h] := A[i,j,h]*V[j,d,m,h]
+    @tullio _Y[d,i,m] := Y[d,i,m,h]
+    Y = softmax_notinplace(_Y/H, dims = 1)
+    @tullio loss := Zoh[d,i,m] * log(Y[d,i,m]) * weigths[m]
+    return -loss
+    # Zoh = reshape(Zoh, q*N, M) #qL,M
+    # Y = reshape(Y, q*N, M) #qL,M
+    # @tullio loss[m] := Zoh[l,m]*log(Y[l,m])
+    # return  -loss'*weigths
+end
 function my_trainer(D::Tuple{Matrix{T1}, Vector{T2}},n_epochs::Int; 
     H::Int = 32,
     d::Int = 23,
