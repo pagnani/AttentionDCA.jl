@@ -41,7 +41,7 @@ function artrainer(D::Tuple{Matrix{T1}, Vector{T2}}, n_epochs::Int, idxperm::Vec
     N,M = size(D[1])
     q = maximum(D[1])
 
-    arvar = ArVar(N,M,q,λ,0.0,D[1],D[2],idxperm)
+    arvar = ArVar(N,M,q,λ,0.0,D[1],D[2],1/M,idxperm)
 
 
     m = if init_m !== nothing
