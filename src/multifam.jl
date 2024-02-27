@@ -150,7 +150,7 @@ function multi_artrainer(D::Vector{Tuple{Matrix{Int}, Vector{Float64}}}, n_epoch
     for i in 1:NF
         Ns[i], Ms[i] = size(D[i][1])
         batch_sizes[i] = Int(round(Ms[i]/n_batches))
-        push!(arvars, ArVar(Ns[i],Ms[i],q,λ[i],0.0,D[i][1],D[i][2],idxperm[i]))
+        push!(arvars, ArVar(Ns[i],Ms[i],q,λ[i],0.0,D[i][1],D[i][2],1/Ms[i],idxperm[i]))
     end
 
     m = if init_m !== Nothing
