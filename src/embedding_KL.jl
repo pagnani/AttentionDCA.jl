@@ -55,10 +55,12 @@ end
 #     return -loss'*weigths
 # end
 
-function my_loss(m::NamedTuple{(:Wq, :Wk, :Wv)}, Z::Matrix{T1}, weigths::Vector{T2}; q = maximum(Z)) where {T1 <: Integer, T2 <: Real}
+function my_loss(m::NamedTuple{(:Wq, :Wk, :Wv)}, Z::Matrix{T1}, weigths::Vector{T2}; λ=0.001, reg = :m) where {T1 <: Integer, T2 <: Real}
     N = size(Z,1)
     M = size(Z,2)
     
+    reg ∈ [:m, :att] || error("The regularization method is not valid, only :m and :att are allowed.")
+
     de,d,H = size(m.Wq)
     Zoh = one_hot(Z) #q,L,M
 
@@ -73,7 +75,12 @@ function my_loss(m::NamedTuple{(:Wq, :Wk, :Wv)}, Z::Matrix{T1}, weigths::Vector{
     @tullio _Y[d,i,m] := Y[d,i,m,h]
     Y = softmax_notinplace(_Y/H, dims = 1)
     @tullio loss := Zoh[d,i,m] * log(Y[d,i,m]) * weigths[m]
-    return -loss
+    
+    if reg == :m
+        return -loss + λ*(sum(abs2,m.Wq) + sum(abs2,m.Wk) + sum(abs2,m.Wv))
+    elseif reg == :att
+        return -loss + λ*sum(abs2,A)
+    end
 end
 
 function my_trainer(D::Tuple{Matrix{T1}, Vector{T2}},n_epochs::Int; 
@@ -83,6 +90,7 @@ function my_trainer(D::Tuple{Matrix{T1}, Vector{T2}},n_epochs::Int;
     batch_size::Int = 1000,
     η::Float64 = 0.005,
     λ::Float64 = 0.001,
+    reg::Symbol = :m,
     init_m = nothing, 
     init_fun = rand, 
     structfile::String = "precompilation_data/PF00014_struct.dat",
@@ -104,12 +112,12 @@ function my_trainer(D::Tuple{Matrix{T1}, Vector{T2}},n_epochs::Int;
         loader = DataLoader(D, batchsize = batch_size, shuffle = true)
         for (z,w) in loader
             _w = w/sum(w)
-            g = gradient(x->my_loss(x, z, _w),m)[1];
+            g = gradient(x->my_loss(x, z, _w, λ = λ, reg = reg),m)[1];
             update!(t,m,g)
         end
 
         PPV = ppv_attention(m,D[1],structfile)
-        l = round(my_loss(m, D[1], D[2]),digits=5) 
+        l = round(my_loss(m, D[1], D[2], λ = λ, reg = reg),digits=5) 
         p = round((PPV[N]),digits=3)
         verbose && println("Epoch $i loss = $l \t PPV@L = $p \t First Error = $(findfirst(x->x!=1, PPV))")
         savefile !== nothing && println(file, "Epoch $i loss = $l \t PPV@L = $p \t First Error = $(findfirst(x->x!=1, PPV))")
@@ -136,13 +144,13 @@ function ppv_attention(m::NamedTuple{(:Wq, :Wk, :Wv)}, Z::Matrix{T1}, structfile
     A = softmax_notinplace(A/M, dims = 2)
 
 
-    M = version(A, dims = 3)[:,:,1]
-    M = (M + M')/2
+    Am = version(A, dims = 3)[:,:,1]
+    Am = (Am + Am')/2
     if APC 
-        M = AttentionDCA.correct_APC(M)
+        Am = AttentionDCA.correct_APC(Am)
     end
     
-    s = score_from_matrix(M)
+    s = score_from_matrix(Am)
 
     PPV = compute_PPV(s,structfile)
     return PPV
