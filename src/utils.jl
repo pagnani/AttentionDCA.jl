@@ -99,19 +99,19 @@ function entropy(Z::AbstractArray{Ti,2}, W::AbstractVector{Float64}) where {Ti<:
     S
 end
 
-softmax(x::AbstractArray{T}; dims = 1) where {T} = softmax!(similar(x, float(T)), x; dims)
+# softmax(x::AbstractArray{T}; dims = 1) where {T} = softmax!(similar(x, float(T)), x; dims)
 
-softmax!(x::AbstractArray; dims = 1) = softmax!(x, x; dims)
+# softmax!(x::AbstractArray; dims = 1) = softmax!(x, x; dims)
 
-function softmax!(out::AbstractArray{T}, x::AbstractArray; dims = 1) where {T}
-    max_ = maximum(x; dims)
-    if all(isfinite, max_)
-        @fastmath out .= exp.(x .- max_)
-    else
-        @fastmath @. out = ifelse(isequal(max_,Inf), ifelse(isequal(x,Inf), 1, 0), exp(x - max_))
-    end
-    out ./= sum(out; dims)
-end
+# function softmax!(out::AbstractArray{T}, x::AbstractArray; dims = 1) where {T}
+#     max_ = maximum(x; dims)
+#     if all(isfinite, max_)
+#         @fastmath out .= exp.(x .- max_)
+#     else
+#         @fastmath @. out = ifelse(isequal(max_,Inf), ifelse(isequal(x,Inf), 1, 0), exp(x - max_))
+#     end
+#     out ./= sum(out; dims)
+# end
 
 function L2reg(Q::AbstractArray{Float64,3},K::AbstractArray{Float64,3},V::AbstractArray{Float64,3},lambda)
     _,d,N = size(Q)

@@ -1,7 +1,8 @@
 module AttentionDCA
 
 import DCAUtils: compute_weighted_frequencies, compute_weights, read_fasta_alignment, remove_duplicate_sequences
-import Flux: Adam, DataLoader, gradient
+import Flux
+import Flux: Adam, DataLoader, gradient, softmax
 import Flux.Optimise: update!
 import Flux.Optimisers: setup
 
@@ -24,6 +25,7 @@ include("dcascore.jl")
 include("attention.jl")
 include("multifam.jl")
 include("autoregressive.jl")
+include("andrea_KL.jl")
 #include("precompile.jl")
 #include("embedding.jl")
 include("embedding_KL.jl")
