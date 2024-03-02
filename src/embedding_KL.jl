@@ -1,4 +1,4 @@
-function one_hot(msa::Array{Int,2}; q::Int = maximum(msa))
+function one_hot(msa::Array{Int,2}; q::Int = maximum(msa)) 
     N, M = size(msa)
     new_msa = zeros(q,N,M)
     
@@ -8,7 +8,6 @@ function one_hot(msa::Array{Int,2}; q::Int = maximum(msa))
     return res
 
 end
-
 
 
 
