@@ -1,15 +1,23 @@
 module AttentionDCA
 
+import CUDA
+import cuDNN
+import CUDA:CuArray
 import DCAUtils: compute_weighted_frequencies, compute_weights, read_fasta_alignment, remove_duplicate_sequences
 import Flux
-import Flux: Adam, DataLoader, gradient, softmax
+import Flux: Adam, DataLoader, gradient, softmax, cpu, gpu
 import Flux.Optimise: update!
 import Flux.Optimisers: setup
+import NNlib
+import NNlib:dot_product_attention,batched_mul
+using KernelAbstractions
 
+#using LoopVectorization
+using Tullio 
 using ArDCA, PottsGauge
 using DelimitedFiles: readdlm
 using ExtractMacro, Printf
-using LinearAlgebra, Tullio, LoopVectorization
+using LinearAlgebra
 using PrecompileTools
 using Random, Statistics
 

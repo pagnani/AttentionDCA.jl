@@ -5,19 +5,23 @@ version = "0.1.0"
 
 [deps]
 ArDCA = "fc7e833f-a3b9-439d-ae82-c6ad11a3e54b"
+CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 DCAUtils = "e41cd558-3099-4f6e-a65d-5336857e40aa"
 DelimitedFiles = "8bb1440f-4735-579b-a4ab-409b98df4dab"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 ExtractMacro = "f86d3d12-fd5b-522c-99e9-61577282a1e9"
 Flux = "587475ba-b771-5e3f-ad9e-33799f191a9c"
+KernelAbstractions = "63c18a36-062a-441e-b654-da1e3ab1ce7c"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 LoopVectorization = "bdcacae8-1622-11e9-2a5c-532679323890"
+NNlib = "872c559c-99b0-510c-b3b7-b6c96a88d5cd"
 PottsGauge = "3bb3bcb6-c561-57d3-939c-408d524c1e5b"
 PrecompileTools = "aea7be01-6a6a-4083-8856-8a6e6704d82a"
 Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 Tullio = "bc48ee85-29a4-5162-ae0b-a64e1601d4bc"
+cuDNN = "02a925ec-e4fe-4b08-9a7e-0d78e3d38ccd"
 
 [compat]
 ArDCA = "0.6"

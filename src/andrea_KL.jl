@@ -8,13 +8,19 @@ struct SelfAttention{T3}
     V::T3
 end
 
-function SelfAttention(d1::Int, d2::Int, H::Int; rt::Type{T}=Float32) where {T<:AbstractFloat}
+function SelfAttention(d1::Int, d2::Int, H::Int; rt::Type{T}=Float32,ongpu::Bool=false) where {T<:AbstractFloat}
+    fun = ongpu ? gpu : x->x
     Q, K, V = randn(rt, d1, d2, H) * T(1e-3), randn(rt, d1, d2, H) * T(1e-3), randn(rt, d1, d1, H) * T(1e-3)
-    SelfAttention(d1, d2, H, Q, K, V)
+    SelfAttention(d1, d2, H, fun(Q), fun(K), fun(V))
 end
 
 Flux.trainable(sa::SelfAttention) = (sa.Q,sa.K,sa.V)
-Base.show(io::IO, sa::SelfAttention) = print(io, "SelfAttention{$(eltype(sa.Q))}[din = $(sa.d1), dou = $(sa.d2), H = $(sa.H) numpara = $(sum(length.(Flux.params(sa))))]")
+function Base.show(io::IO, sa::SelfAttention)
+    ongpu = typeof(sa.V) <: CuArray
+    print(io, "SelfAttention{$(eltype(sa.Q))}[din=$(sa.d1), dou=$(sa.d2), H=$(sa.H), numpara=$(sum(length.(Flux.params(sa)))),t onpgu=$ongpu]")
+end
+
+
 @functor SelfAttention
 
 function prepare_network(filename::String; 
@@ -24,13 +30,16 @@ function prepare_network(filename::String;
     rt::Type{T}=Float64,
     dou::Int=21,
     din::Int=21,
-    H::Int= 32
+    H::Int= 32,
+    ongpu::Bool=false
 ) where {T<:AbstractFloat}
+    fun = ongpu ? gpu : x->x
     W, Z, _, _, _ = ArDCA.read_fasta(filename, max_gap_fraction, theta, remove_dups)
     Z = rt.(one_hot(Int.(Z),q=din))
     W = rt.(W)
-    return Z,W,SelfAttention(din, dou, H)
+    return fun(Z),fun(W),SelfAttention(din, dou, H, ongpu=ongpu)
 end
+
 
 function cross_attention(sa::SelfAttention,Z)
     WQ, WK, WV = sa.Q, sa.K, sa.V
@@ -38,11 +47,25 @@ function cross_attention(sa::SelfAttention,Z)
     @tullio K[i, d2, m, h] := Z[d1, i, m] * WK[d1, d2, h]
     @tullio V[i, d2, m, h] := Z[d1, i, m] * WV[d1, d2, h]
     @tullio A[i, j, h] := Q[i, d, m, h] * K[j, d, m, h] * (i!=j)
-    A = Flux.softmax(A / size(Z, 3), dims=2)
+    return Flux.softmax(A / size(Z, 3), dims=2)
 end
+
+function (sa::SelfAttention)(Z::AbstractArray, W::AbstractVector)
+    WQ, WK, WV, H = sa.Q, sa.K, sa.V, sa.H
+    sw = inv(sum(W))
+    @tullio Q[i, d2, m, h] := Z[d1, i, m] * WQ[d1, d2, h] * W[m] * $sw
+    @tullio K[i, d2, m, h] := Z[d1, i, m] * WK[d1, d2, h] * W[m] * $sw
+    @tullio V[i, d2, m, h] := Z[d1, i, m] * WV[d1, d2, h] * W[m] * $sw
+    @tullio A[i, j, h] := Q[i, d, m, h] * K[j, d, m, h]
+    A = Flux.softmax(A / size(Z, 3), dims=2)
+    @tullio Y[d, i, m] := A[i, j, h] * V[j, d, m, h] * (i != j)
+    return Flux.softmax(Y / H, dims=1)
+end
+
 
 function (sa::SelfAttention)(Z::AbstractArray)
     WQ, WK, WV, H = sa.Q, sa.K, sa.V, sa.H
+    #sw = inv(sum(W))
     @tullio Q[i, d2, m, h] := Z[d1, i, m] * WQ[d1, d2, h]
     @tullio K[i, d2, m, h] := Z[d1, i, m] * WK[d1, d2, h]
     @tullio V[i, d2, m, h] := Z[d1, i, m] * WV[d1, d2, h]
@@ -55,15 +78,15 @@ end
 function myloss_andrea(sa,Z,W)
     sw = sum(W)
     Y = sa(Z)
-    @tullio loss := Z[d,i,m] * log(Y[d, i, m]) * W[m]
-    return -loss/sw
+    @tullio loss[d] := Z[d,i,m] * log(Y[d, i, m]) * W[m]
+    return -sum(loss)/sw
 end
 
 function myl2loss(sa::SelfAttention)
     return sum(abs2,sa.Q) + sum(abs2,sa.K) + sum(abs2,sa.V)
 end
 
-function trainnet!(sa,Z, W::Vector{T};
+function trainnet!(sa,Z, W::AbstractVector{T};
     niter::Int=100,
     λ::Real=0.01,
     Δt::Int=10,
@@ -95,7 +118,7 @@ function klargest_indexes(m, k)
     ci[p]
 end
 
-function compute_residue_pair_dist(filedist::String; threshold::Real=7.0)
+function residue_pair_dist(filedist::String; threshold::Real=7.0)
     d = readdlm(filedist)
     dist = Dict((round(Int, d[i, 1]), round(Int, d[i, 2])) => d[i, 4] for i in axes(d,1))
     N = maximum(x->x[2], keys(dist))
