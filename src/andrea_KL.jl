@@ -15,11 +15,11 @@ function SelfAttention(d1::Int, d2::Int, H::Int; rt::Type{T}=Float32,ongpu::Bool
 end
 
 Flux.trainable(sa::SelfAttention) = (sa.Q,sa.K,sa.V)
+
 function Base.show(io::IO, sa::SelfAttention)
     ongpu = typeof(sa.V) <: CuArray
-    print(io, "SelfAttention{$(eltype(sa.Q))}[din=$(sa.d1), dou=$(sa.d2), H=$(sa.H), numpara=$(sum(length.(Flux.params(sa)))),t onpgu=$ongpu]")
+    print(io, "SelfAttention{$(eltype(sa.Q))}[din=$(sa.d1), dou=$(sa.d2), H=$(sa.H), numpara=$(sum(length.(Flux.params(sa)))), onpgu=$ongpu]")
 end
-
 
 @functor SelfAttention
 
@@ -75,11 +75,20 @@ function (sa::SelfAttention)(Z::AbstractArray)
     return Flux.softmax(Y / H, dims=1)
 end
 
-function myloss_andrea(sa,Z,W)
+# Tullio does not reduce to scalar on gpu. for CuArray we do the one below
+function myloss_andrea(sa,Z::AbstractArray{T,3},W::AbstractVector{T}) where {T<:AbstractFloat}
     sw = sum(W)
     Y = sa(Z)
     @tullio loss[d] := Z[d,i,m] * log(Y[d, i, m]) * W[m]
     return -sum(loss)/sw
+end
+
+# ... scalar reduction in Tullio is ok for Array.
+function myloss_andrea(sa, Z::Array{T,3}, W::Vector{T}) where {T<:AbstractFloat}
+    sw = sum(W)
+    Y = sa(Z)
+    @tullio loss := Z[d, i, m] * log(Y[d, i, m]) * W[m]
+    return -loss / sw
 end
 
 function myl2loss(sa::SelfAttention)
@@ -134,7 +143,7 @@ end
 
 function first_k_pairs(sa::SelfAttention,Z,k; apc::Bool=true)
     fun = apc ? ArDCA.correct_APC : x->x
-    A=cross_attention(sa::SelfAttention,Z)
+    A = cross_attention(sa::SelfAttention,Z) |> cpu
     res = zeros(size(A,1),size(A,2))
     for h in axes(A,3)
         vAh =A[:, :, h]
@@ -147,4 +156,8 @@ function first_k_pairs(sa::SelfAttention,Z,k; apc::Bool=true)
         end
     end 
     res
+end
+
+function loss_grad(sa,Z,W)
+    gradient(()->myloss_andrea(sa,Z,W), Flux.params(sa))
 end

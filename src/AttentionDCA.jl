@@ -10,9 +10,9 @@ import Flux.Optimise: update!
 import Flux.Optimisers: setup
 import NNlib
 import NNlib:dot_product_attention,batched_mul
-using KernelAbstractions
+#using KernelAbstractions
 
-#using LoopVectorization
+using LoopVectorization
 using Tullio 
 using ArDCA, PottsGauge
 using DelimitedFiles: readdlm
@@ -26,7 +26,7 @@ using Random, Statistics
 
 export trainer, stat_trainer, artrainer, stat_artrainer, multi_trainer, multi_artrainer, stat_multi_trainer
 export score, compute_freq, compute_PPV, sample, quickread
-
+export cpu, gpu
 
 include("utils.jl")
 include("dcascore.jl")
