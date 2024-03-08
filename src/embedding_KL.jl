@@ -1,3 +1,6 @@
+import Flux: Momentum, MultiHeadAttention
+
+
 function one_hot(msa::Array{Int,2}; q::Int = maximum(msa)) 
     N, M = size(msa)
     new_msa = zeros(q,N,M)
@@ -11,7 +14,7 @@ end
 
 
 
-# function compute_attention(m::N ,Z::Matrix{T1}) where {T1<: Integer}
+# function compute_attention(m ,Z::Matrix{T1}) where {T1<: Integer}
     
 #     Z_one_hot = one_hot(Z) #L,q,M
     
@@ -54,6 +57,41 @@ end
 #     return -loss'*weigths
 # end
 
+function compute_attention(m::NamedTuple{(:Wq, :Wk, :Wv)}, Z::Matrix{T1}; APC = true, sym = true) where {T1<:Integer}
+    N = size(Z,1)
+    M = size(Z,2)
+    q = maximum(Z)
+    de,d,H = size(m.Wq)
+    Zoh = one_hot(Z) #q,L,M
+
+    size(Zoh,1) == de || error("The size of the one hot encoding is not the same as the first dimension of Wq")
+
+    @tullio Q[i,d2,m,h] := Zoh[d1,i,m]*m.Wq[d1,d2,h]
+    @tullio K[i,d2,m,h] := Zoh[d1,i,m]*m.Wk[d1,d2,h]
+    @tullio V[i,d2,m,h] := Zoh[d1,i,m]*m.Wv[d1,d2,h]
+    @tullio A[i,j,m,h] := Q[i,d,m,h]*K[j,d,m,h]*(i!=j)
+    A = softmax_notinplace(A, dims = 2)
+    
+    if sym
+        A = (A + permutedims(A, [2,1,3,4]))/2
+    end
+
+    if APC
+        _A = zeros(size(A))
+        for h in 1:H
+            for m in 1:M
+                _A[:,:,m,h] = AttentionDCA.correct_APC(A[:,:,m,h])
+            end
+        end 
+        A = _A
+    end
+
+
+    return A,V
+end
+
+
+
 function my_loss(m::NamedTuple{(:Wq, :Wk, :Wv)}, Z::Matrix{T1}, weigths::Vector{T2}; λ=0.001, reg = :m) where {T1 <: Integer, T2 <: Real}
     N = size(Z,1)
     M = size(Z,2)
@@ -68,9 +106,9 @@ function my_loss(m::NamedTuple{(:Wq, :Wk, :Wv)}, Z::Matrix{T1}, weigths::Vector{
     @tullio Q[i,d2,m,h] := Zoh[d1,i,m]*m.Wq[d1,d2,h]
     @tullio K[i,d2,m,h] := Zoh[d1,i,m]*m.Wk[d1,d2,h]
     @tullio V[i,d2,m,h] := Zoh[d1,i,m]*m.Wv[d1,d2,h]
-    @tullio A[i,j,h] := Q[i,d,m,h]*K[j,d,m,h]
+    @tullio A[i,j,h] := Q[i,d,m,h]*K[j,d,m,h]*(i!=j)
     A = softmax_notinplace(A/M, dims = 2)
-    @tullio Y[d,i,m,h] := A[i,j,h]*V[j,d,m,h]
+    @tullio Y[d,i,m,h] := A[i,j,h]*V[j,d,m,h]*(i!=j)
     @tullio _Y[d,i,m] := Y[d,i,m,h]
     Y = softmax_notinplace(_Y/H, dims = 1)
     @tullio loss := Zoh[d,i,m] * log(Y[d,i,m]) * weigths[m]
@@ -101,7 +139,7 @@ function my_trainer(D::Tuple{Matrix{T1}, Vector{T2}},n_epochs::Int;
     m = if init_m !== nothing
         init_m
     else
-        (Wq = init_fun(q,d,H), Wk = init_fun(q,d,H), Wv = init_fun(q,q,H))
+        (Wq = init_fun(q,d,H)*1.0e-3, Wk = init_fun(q,d,H)*1.0e-3, Wv = init_fun(q,q,H)*1.0e-3)
     end
     t = setup(Adam(η), m)
 
@@ -115,10 +153,10 @@ function my_trainer(D::Tuple{Matrix{T1}, Vector{T2}},n_epochs::Int;
             update!(t,m,g)
         end
 
-        PPV = ppv_attention(m,D[1],structfile)
-        l = round(my_loss(m, D[1], D[2], λ = λ, reg = reg),digits=5) 
-        p = round((PPV[N]),digits=3)
-        verbose && println("Epoch $i loss = $l \t PPV@L = $p \t First Error = $(findfirst(x->x!=1, PPV))")
+        #PPV = ppv_attention(m,D[1],structfile)
+        @show round(my_loss(m, D[1], D[2], λ = λ, reg = reg),digits=5) 
+        #p = round((PPV[N]),digits=3)
+        #verbose && println("Epoch $i loss = $l \t PPV@L = $p \t First Error = $(findfirst(x->x!=1, PPV))")
         savefile !== nothing && println(file, "Epoch $i loss = $l \t PPV@L = $p \t First Error = $(findfirst(x->x!=1, PPV))")
     end
 
@@ -329,3 +367,89 @@ score_from_matrix(A) = sort([(j,i,A[j,i]) for i in 2:size(A,2) for j in 1:i-1], 
 #     verbose && println("preprocessing took $time seconds")
 #     my_trainer(data, n_epochs; verbose = verbose, kwds...)
 # end
+
+logistic_contact_energy(i,j,ms,A,β) = -β[1] - β[2:end]'*A[i,j,ms,:] #A ∈ R^{L x L x M x H}, β ∈ R^{H+1}
+
+logistic_contact_probability(i,j,ms,A,β) = 1/(1+exp(logistic_contact_energy(i,j,ms,A,β)))
+
+function logistic_loss(A, β; k = 6, λ0 = 0.1, λ = 0.1)
+    L,L,M,H = size(A)
+
+    loss = 0.0
+    for d in 1:M
+        for i in 1:L-k
+            for j in i+k:L
+                loss += log0(logistic_contact_probability(i,j,d,A,β))
+            end
+        end
+    end
+
+    return -loss + λ*sum(abs.(β[2:end])) + λ0*abs(β[1])
+end
+
+function logistic_loss_and_grad!(grad, A,β; k = 6, λ0 = 0.1, λ = 0.1)
+
+    L,L,M,H = size(A)
+
+    grad .= 0.0
+
+
+    loss = 0.0
+    for d in 1:M
+        for i in 1:L-k
+            for j in i+k:L
+                loss += log0(logistic_contact_probability(i,j,d,A,β))
+                grad[1] -= exp(logistic_contact_energy(i,j,d,A,β))/(1+exp(logistic_contact_energy(i,j,d,A,β)))
+            end
+        end
+    end
+
+
+    for h in 1:H
+        for d in 1:M
+            for i in 1:L-k
+                for j in i+k:L
+                    grad[h+1] -= A[i,j,d,h]*exp(logistic_contact_energy(i,j,d,A,β))/(1+exp(logistic_contact_energy(i,j,d,A,β)))
+                end
+            end
+        end
+    end
+
+    grad .+= sign.(β)*λ
+
+    return -loss + λ*sum(abs.(β[2:end])) + λ0*abs(β[1])
+
+end
+
+function new_loss(mha, Z,W, mask)
+    # if length(W) != size(mask,4)
+    #     mask = mask[:,:,:,1:length(W)]
+    # end
+    y,_ = mha(Z, mask = mask)
+
+    ysf = softmax_notinplace(y, dims = 1) 
+    @tullio loss := W[m]*Z[q,i,m]*log(ysf[q,i,m])
+    return -loss
+end
+
+
+function new_trainer(Z,W;niter=20, η=0.01,batch_size=1000)
+    mha =  MultiHeadAttention((21,21,21) => (64, 64) => 21, nheads=8);
+    q,L,M = size(Z)
+    mask = zeros(Bool, L,L,8,M)
+    @tullio mask[i,j,h,m] = (i!=j)
+    t = setup(Adam(η), mha)
+    for i in 1:niter
+        loader = DataLoader((Z,W), batchsize = batch_size, shuffle = true)
+        for (z,w) in loader
+            _w = w/sum(w)
+            g = gradient(x->new_loss(x, z,_w, mask[:,:,:,1:length(_w)]),mha)[1];
+            update!(t,mha,g)
+        end
+        if i % 5 == 0
+            println("Epoch $i loss = $(new_loss(mha, Z,W, mask))")
+        end
+    end
+
+    return mha
+end
