@@ -221,13 +221,9 @@ function L2_loss(sa::Union{SelfAttention, SelfAttention_Tied})
     return sum(abs2,sa.Q) + sum(abs2,sa.K) + sum(abs2,sa.V)
 end
 
-function L2_attention_loss(sa::Union{SelfAttention, SelfAttention_Tied},Z) where T<:AbstractFloat
+function L2_attention_loss(sa::Union{SelfAttention, SelfAttention_Tied},Z)
     A = cross_attention(sa,Z)
     return sum(abs2,A)
-end
-
-function L2_loss(sa::Union{SelfAttention, SelfAttention_Tied})
-    return sum(abs2,sa.Q) + sum(abs2,sa.K) + sum(abs2,sa.V)
 end
 
 function trainnet!(sa::Union{SelfAttention, SelfAttention_Tied},Z, W::AbstractVector{T};
