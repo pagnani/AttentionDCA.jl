@@ -1,11 +1,32 @@
 function softmax_notinplace(x::AbstractArray; dims = 1)
+    dims > length(size(x)) && error("dims is too big, it can range from 1 to $(length(size(x)))")
+    T = eltype(x)
     max_ = maximum(x; dims)
+    out = similar(x)
+    
     if all(isfinite, max_)
         @fastmath out = exp.(x .- max_)
     else
-        @fastmath @. out = ifelse(isequal(max_,Inf), ifelse(isequal(x,Inf), 1, 0), exp(x - max_))
+        @fastmath @. out = ifelse(isequal(max_,Inf), ifelse(isequal(x,Inf), 1, 0), exp(x - max_)) 
+        #@fastmath @. out = ifelse(isequal(max_,-Inf), ifelse(isequal(x,-Inf),0,0), ifelse(isequal(max_,Inf), ifelse(isequal(x,Inf), 1, 0), exp(x - max_))) 
     end
-    return out ./ sum(out; dims)
+
+    sums_ = sum(out; dims = dims)
+    index = sums_ .== 0
+
+    sums = sums_ + index
+    
+    return  out./sums
+    # return out
+end
+
+function hardmax(A::AbstractArray; dims::Int=1)
+    max_index = argmax(A, dims=dims)
+    out = zeros(Int, size(A))
+    for i in max_index
+        out[i] = 1
+    end
+    return out
 end
 
 
