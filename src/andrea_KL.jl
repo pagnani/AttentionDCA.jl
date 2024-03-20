@@ -33,7 +33,7 @@ struct SelfAttention_Tied{T3}
     K::T3
     V::T3
     O::T3
-    mask::Union{Symbol, Nothing}
+    mask::Matrix{Bool}
 end
 
 function SelfAttention(demb::Int, datt::Int, dout::Int, H::Int; mask::Union{Symbol, Nothing} = nothing, rt::Type{T}=Float32,ongpu::Bool=false, init_fun = randn, init_scale = 1.0e-3) where {T<:AbstractFloat}
@@ -54,10 +54,10 @@ end
 
 @functor SelfAttention
 
-function SelfAttention_Tied(demb::Int, datt::Int, dout::Int, H::Int;mask::Union{Symbol, Nothing}, rt::Type{T}=Float32,ongpu::Bool=false, init_fun = randn, init_scale = 1.0e-3) where {T<:AbstractFloat}
+function SelfAttention_Tied(demb::Int, datt::Int, dout::Int, H::Int, mask::Matrix{Bool}; rt::Type{T}=Float32,ongpu::Bool=false, init_fun = randn, init_scale = 1.0e-3) where {T<:AbstractFloat}
     fun = ongpu ? gpu : x->x
 
-    mask ∈ [nothing, :causal, :diagonal] || error("The mask method is not valid, only :causal and :diagonal are allowed, or nothing.")
+    #mask ∈ [nothing, :causal, :diagonal] || error("The mask method is not valid, only :causal and :diagonal are allowed, or nothing.")
 
     Q, K, V, O = init_fun(rt, demb, datt, H) * T(init_scale), init_fun(rt, demb, datt, H) * T(init_scale), init_fun(rt, demb, demb, H) * T(init_scale), init_fun(rt, demb, dout, H) * T(init_scale)
     SelfAttention_Tied(demb, datt, dout, H, fun(Q), fun(K), fun(V), fun(O), mask)
@@ -85,13 +85,15 @@ function prepare_network(filename::String;
     mask::Union{Symbol, Nothing} = nothing,
     ongpu::Bool=false) where {T<:AbstractFloat}
 
+    mask ∈ [nothing, :causal, :diagonal] || error("The mask method is not valid, only :causal and :diagonal are allowed, or nothing.")
 
     fun = ongpu ? gpu : x->x
     W, Z, _, _, _ = ArDCA.read_fasta(filename, max_gap_fraction, theta, remove_dups)
     Z = rt.(one_hot(Int.(Z),q=demb))
     W = rt.(W)
+    msk = build_mask(mask, size(Z,2))
     if tied
-        return fun(Z),fun(W),SelfAttention_Tied(demb, datt, dout, H, ongpu=ongpu, mask=mask)
+        return fun(Z),fun(W),SelfAttention_Tied(demb, datt, dout, H, msk, ongpu=ongpu)
     else
         return fun(Z),fun(W),SelfAttention(demb, datt, dout, H, ongpu=ongpu, mask=mask)
     end
@@ -99,12 +101,12 @@ end
 
 
 function cross_attention(sa::SelfAttention_Tied,Z)
-    WQ, WK, WV, mask = sa.Q, sa.K, sa.V, sa.mask
-    msk = build_mask(mask, size(Z,2))
+    WQ, WK, WV, msk = sa.Q, sa.K, sa.V, sa.mask
+    #msk = build_mask(mask, size(Z,2))
     @tullio Q[i, d2, m, h] := Z[d1, i, m] * WQ[d1, d2, h]
     @tullio K[i, d2, m, h] := Z[d1, i, m] * WK[d1, d2, h]
     @tullio V[i, d2, m, h] := Z[d1, i, m] * WV[d1, d2, h]
-    @tullio A[i, j, h] := Q[i, d, m, h] * K[j, d, m, h]*(i!=j)
+    @tullio A[i, j, h] := Q[i, d, m, h] * K[j, d, m, h]#*(i!=j)
     A = apply_mask(A, msk)
     return softmax_notinplace(A / size(Z, 3), dims=2)
 end
@@ -152,9 +154,9 @@ end
 
 
 function (sa::SelfAttention_Tied)(Z::AbstractArray)
-    WQ, WK, WV, WO, H, mask = sa.Q, sa.K, sa.V, sa.O, sa.H, sa.mask
+    WQ, WK, WV, WO, H, msk = sa.Q, sa.K, sa.V, sa.O, sa.H, sa.mask
     #sw = inv(sum(W))
-    msk = build_mask(mask, size(Z, 2))
+    #msk = build_mask(mask, size(Z, 2))
 
     @tullio Q[i, d2, m, h] := Z[d1, i, m] * WQ[d1, d2, h]
     @tullio K[i, d2, m, h] := Z[d1, i, m] * WK[d1, d2, h]
@@ -162,7 +164,7 @@ function (sa::SelfAttention_Tied)(Z::AbstractArray)
     @tullio A[i, j, h] := Q[i, d, m, h] * K[j, d, m, h]
     A = apply_mask(A, msk)
     A = softmax_notinplace(A / size(Z, 3), dims=2)
-    @tullio _Y[d, i, m, h] := A[i, j, h] * V[j, d, m, h]*(i!=j)
+    @tullio _Y[d, i, m, h] := A[i, j, h] * V[j, d, m, h]*(i>j)
     @tullio Y[dout,i,m] := _Y[demb,i,m,h] * WO[demb,dout,h]
     return Flux.softmax(Y / H, dims=1)
 end
@@ -185,10 +187,13 @@ end
 function build_mask(masktype::Union{Nothing, Symbol}, L::Int)
     if masktype == :causal
         mask = tril(ones(Bool, L,L))
+        for i in 2:L
+            mask[i,i] = false
+        end
     elseif masktype == :diagonal
         mask = Bool.(1 .- I(L))
     else
-        mask = nothing
+        mask = ones(Bool, L,L)
     end
    return mask
 end
@@ -375,6 +380,7 @@ function sampler(sa::Union{SelfAttention,SelfAttention_Tied}, msamples::Int, Z,W
     q = length(f0)
 
     res = Array{Int}(undef, q, L, msamples)
+    # Threads.@threads for i in 1:msamples
     Threads.@threads for i in 1:msamples
         sample_z = zeros(Int, q, L, 1)
         sample_z[wsample(1:q, f0), 1, 1] = 1
@@ -385,4 +391,17 @@ function sampler(sa::Union{SelfAttention,SelfAttention_Tied}, msamples::Int, Z,W
         res[:, :, i] .= sample_z[:,:,1]
     end
     return res
+end
+
+
+function positional_enconding(demb::Int, L::Int; rt::Type{T}=Float32, ongpu::Bool=false) where {T<:AbstractFloat}
+    fun = ongpu ? gpu : x->x
+    pe = fun(zeros(T, demb, L))
+    for i in 1:(demb>>1)
+        for j in 1:L    
+            pe[2*i, j] = sin(j / 10000^((2*i)/ demb))
+            pe[2*i + 1, j] = cos(j / 10000^((2*i - 1)/ demb))
+        end
+    end
+    rt.(pe)
 end
