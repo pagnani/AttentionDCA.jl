@@ -1,4 +1,4 @@
-import Flux:@functor,batched_adjoint,batched_mul,Dense
+import Flux:@functor,batched_adjoint,batched_mul,Dense, normalise
 import Distributions: wsample 
 
 function onehot2cat(Z)
@@ -12,62 +12,63 @@ function onehot2cat(Z)
     return Matrix(Zcat)
 end
 
-struct SelfAttention{T3}
+struct SelfAttention{T3,T}
     demb::Int # input dimension
     datt::Int # attention internal dimension
     dout::Int # output dimension
     H::Int
-    Q::T3
-    K::T3
-    V::T3
-    O::T3
-    mask::Union{Symbol, Nothing}
-end
-
-struct SelfAttention_Tied{T3}
-    demb::Int # input dimension
-    datt::Int # attention internal dimension
-    dout::Int # output dimension
-    H::Int
+    E::Matrix{T}
     Q::T3
     K::T3
     V::T3
     O::T3
     mask::Matrix{Bool}
+    pe::Matrix{Float64}
 end
 
-function SelfAttention(demb::Int, datt::Int, dout::Int, H::Int; mask::Union{Symbol, Nothing} = nothing, rt::Type{T}=Float32,ongpu::Bool=false, init_fun = randn, init_scale = 1.0e-3) where {T<:AbstractFloat}
+struct SelfAttention_Tied{T3,T}
+    demb::Int # input dimension
+    datt::Int # attention internal dimension
+    dout::Int # output dimension
+    H::Int
+    E::Matrix{T}
+    Q::T3
+    K::T3
+    V::T3
+    O::T3
+    mask::Matrix{Bool}
+    pe::Matrix{Float64}
+end
+
+function SelfAttention(q::Int, demb::Int, datt::Int, dout::Int, H::Int, mask::Matrix{Bool}, pe::Matrix; rt::Type{T}=Float32,ongpu::Bool=false, init_fun = randn, init_scale = 1.0e-3) where {T<:AbstractFloat}
     fun = ongpu ? gpu : x->x
 
-    mask ∈ [nothing, :causal, :diagonal] || error("The mask method is not valid, only :causal and :diagonal are allowed, or nothing.")
+    # mask ∈ [nothing, :causal, :diagonal] || error("The mask method is not valid, only :causal and :diagonal are allowed, or nothing.")
 
-    Q, K, V, O = init_fun(rt, demb, datt, H) * T(init_scale), init_fun(rt, demb, datt, H) * T(init_scale), init_fun(rt, demb, demb, H) * T(init_scale), init_fun(rt, demb, dout, H) * T(init_scale)
-    SelfAttention(demb, datt, dout, H, fun(Q), fun(K), fun(V), fun(O), mask)
+    E, Q, K, V, O = init_fun(rt, q, demb) * T(init_scale), init_fun(rt, demb, datt, H) * T(init_scale), init_fun(rt, demb, datt, H) * T(init_scale), init_fun(rt, demb, demb, H) * T(init_scale), init_fun(rt, demb, dout, H) * T(init_scale)
+    SelfAttention(demb, datt, dout, H, fun(E), fun(Q), fun(K), fun(V), fun(O), mask, pe)
 end
-
 Flux.trainable(sa::SelfAttention) = (sa.Q,sa.K,sa.V,sa.O)
-
 function Base.show(io::IO, sa::SelfAttention)
     ongpu = typeof(sa.V) <: CuArray
-    print(io, "SelfAttention{$(eltype(sa.Q))}[demb=$(sa.demb), datt=$(sa.datt), dout=$(sa.dout), H=$(sa.H), numpara=$(sum(length.(Flux.params(sa)))), onpgu=$ongpu, mask=$(sa.mask)]")
+    print(io, "SelfAttention{$(eltype(sa.Q))}[demb=$(sa.demb), datt=$(sa.datt), dout=$(sa.dout), H=$(sa.H), numpara=$(sum(length.(Flux.params(sa)))), onpgu=$ongpu)]")
 end
-
 @functor SelfAttention
 
-function SelfAttention_Tied(demb::Int, datt::Int, dout::Int, H::Int, mask::Matrix{Bool}; rt::Type{T}=Float32,ongpu::Bool=false, init_fun = randn, init_scale = 1.0e-3) where {T<:AbstractFloat}
+function SelfAttention_Tied(q::Int, demb::Int, datt::Int, dout::Int, H::Int, mask::Matrix{Bool}, pe::Matrix; rt::Type{T}=Float32,ongpu::Bool=false, init_fun = randn, init_scale = 1.0e-3) where {T<:AbstractFloat}
     fun = ongpu ? gpu : x->x
 
     #mask ∈ [nothing, :causal, :diagonal] || error("The mask method is not valid, only :causal and :diagonal are allowed, or nothing.")
 
-    Q, K, V, O = init_fun(rt, demb, datt, H) * T(init_scale), init_fun(rt, demb, datt, H) * T(init_scale), init_fun(rt, demb, demb, H) * T(init_scale), init_fun(rt, demb, dout, H) * T(init_scale)
-    SelfAttention_Tied(demb, datt, dout, H, fun(Q), fun(K), fun(V), fun(O), mask)
+    E, Q, K, V, O = init_fun(rt, q, demb) * T(init_scale), init_fun(rt, demb, datt, H) * T(init_scale), init_fun(rt, demb, datt, H) * T(init_scale), init_fun(rt, demb, demb, H) * T(init_scale), init_fun(rt, demb, dout, H) * T(init_scale)
+    SelfAttention_Tied(demb, datt, dout, H, fun(E), fun(Q), fun(K), fun(V), fun(O), mask, pe)
 end
 
-Flux.trainable(sa::SelfAttention_Tied) = (sa.Q,sa.K,sa.V,sa.O)
+Flux.trainable(sa::SelfAttention_Tied) = (sa.E,sa.Q,sa.K,sa.V,sa.O)
 
 function Base.show(io::IO, sa::SelfAttention_Tied)
     ongpu = typeof(sa.V) <: CuArray
-    print(io, "SelfAttention_Tied{$(eltype(sa.Q))}[demb=$(sa.demb), datt=$(sa.datt), dout=$(sa.dout), H=$(sa.H), numpara=$(sum(length.(Flux.params(sa)))), onpgu=$ongpu, mask=$(sa.mask)]")
+    print(io, "SelfAttention_Tied{$(eltype(sa.Q))}[demb=$(sa.demb), datt=$(sa.datt), dout=$(sa.dout), H=$(sa.H), numpara=$(sum(length.(Flux.params(sa)))), onpgu=$ongpu]")
 end
 
 @functor SelfAttention_Tied
@@ -78,10 +79,12 @@ function prepare_network(filename::String;
     remove_dups::Bool=true,
     rt::Type{T}=Float64,
     datt::Int=21,
+    q::Int = 21,
     demb::Int=21,
     dout::Int=demb,
     H::Int= 32,
     tied::Bool=false,
+    pos_enc::Bool=false,
     mask::Union{Symbol, Nothing} = nothing,
     ongpu::Bool=false) where {T<:AbstractFloat}
 
@@ -90,19 +93,29 @@ function prepare_network(filename::String;
     fun = ongpu ? gpu : x->x
     W, Z, _, _, _ = ArDCA.read_fasta(filename, max_gap_fraction, theta, remove_dups)
     Z = rt.(one_hot(Int.(Z),q=demb))
+    # if pe
+    #     pe = positional_enconding(demb, size(Z,2), rt=rt, ongpu=ongpu)
+    #     Z = Z .+ pe
+    # end
+    pe = pos_enc ? positional_enconding(demb, size(Z,2), rt=rt, ongpu=ongpu) : zeros(rt, demb, size(Z,2))
     W = rt.(W)
     msk = build_mask(mask, size(Z,2))
     if tied
-        return fun(Z),fun(W),SelfAttention_Tied(demb, datt, dout, H, msk, ongpu=ongpu)
+        return fun(Z),fun(W),SelfAttention_Tied(q, demb, datt, dout, H, msk, pe, ongpu=ongpu)
     else
-        return fun(Z),fun(W),SelfAttention(demb, datt, dout, H, ongpu=ongpu, mask=mask)
+        return fun(Z),fun(W),SelfAttention(q, demb, datt, dout, H, msk, pe, ongpu=ongpu)
     end
 end
 
 
-function cross_attention(sa::SelfAttention_Tied,Z)
-    WQ, WK, WV, msk = sa.Q, sa.K, sa.V, sa.mask
+function cross_attention(sa::SelfAttention_Tied,Zoh; norm_layer::Function=Flux.normalise,norm_dims::Int=1)
+    E, WQ, WK, WV, msk, pe = sa.E, sa.Q, sa.K, sa.V, sa.mask, sa.pe
     #msk = build_mask(mask, size(Z,2))
+    @tullio Z[demb, i, m] := Zoh[q,i,m]*E[q,demb] + pe[demb,i]  
+    # Z = Z_ ./ sum(Z_,dims=3)
+    Z = norm_layer(Z, dims = norm_dims)
+    # Z = normalise(Z_, dims = 3)
+
     @tullio Q[i, d2, m, h] := Z[d1, i, m] * WQ[d1, d2, h]
     @tullio K[i, d2, m, h] := Z[d1, i, m] * WK[d1, d2, h]
     @tullio V[i, d2, m, h] := Z[d1, i, m] * WV[d1, d2, h]
@@ -111,36 +124,54 @@ function cross_attention(sa::SelfAttention_Tied,Z)
     return softmax_notinplace(A / size(Z, 3), dims=2)
 end
 
-function cross_attention(sa::SelfAttention,Z)
-    WQ, WK, WV, mask = sa.Q, sa.K, sa.V, sa.mask
-    msk = build_mask(mask, size(Z,2))
+function cross_attention(sa::SelfAttention,Zoh; norm_layer::Function=Flux.normalise,norm_dims::Int=1)
+    E, WQ, WK, WV, msk, pe = sa.E, sa.Q, sa.K, sa.V, sa.mask, sa.pe
+    #msk = build_mask(mask, size(Z,2))
+    @tullio Z[demb, i, m ] := Zoh[q,i,m]*E[q,demb] + pe[demb,i]
+    # Z = Z_ ./ sum(Z_,dims=3)
+    # Z = normalise(Z_, dims = 3)
+    Z = norm_layer(Z, dims = norm_dims)
+
     @tullio Q[i, d2, m, h] := Z[d1, i, m] * WQ[d1, d2, h]
     @tullio K[i, d2, m, h] := Z[d1, i, m] * WK[d1, d2, h]
     @tullio V[i, d2, m, h] := Z[d1, i, m] * WV[d1, d2, h]
-    @tullio A[i, j, m, h] := Q[i, d, m, h] * K[j, d, m, h]*(i!=j)
+    @tullio A[i, j, m, h] := Q[i, d, m, h] * K[j, d, m, h]#*(i!=j)
     A = apply_mask(A, msk)
     return softmax_notinplace(A, dims=2)
 end
 
-function (sa::SelfAttention_Tied)(Z::AbstractArray, W::AbstractVector)
-    WQ, WK, WV, WO, H, mask = sa.Q, sa.K, sa.V, sa.O, sa.H, sa.mask
+function (sa::SelfAttention_Tied)(Zoh::AbstractArray, W::AbstractVector; norm_layer::Function=Flux.normalise,norm_dims::Int=1)
+    E, WQ, WK, WV, WO, H, msk, pe = sa.E, sa.Q, sa.K, sa.V, sa.O, sa.H, sa.mask, sa.pe
     sw = inv(sum(W))
-    msk = build_mask(mask, size(Z, 2))
-    @tullio Q[i, d2, m, h] := Z[d1, i, m] * WQ[d1, d2, h] * W[m] * $sw
+    #msk = build_mask(mask, size(Z, 2))
+
+    @tullio Z[demb, i, m ] := Zoh[q,i,m]*E[q,demb] + pe[demb,i]
+    # Z = Z_ ./ sum(Z_,dims=3)
+    # Z = normalise(Z_, dims = 3)
+    Z = norm_layer(Z, dims = norm_dims)
+
+    @tullio Q[i, d2, m, h] := Z[d1, i, m] * WQ[d1, d2, h] * W[m] * $sw 
     @tullio K[i, d2, m, h] := Z[d1, i, m] * WK[d1, d2, h] * W[m] * $sw
     @tullio V[i, d2, m, h] := Z[d1, i, m] * WV[d1, d2, h] * W[m] * $sw
     @tullio A[i, j, h] := Q[i, d, m, h] * K[j, d, m, h]
+
     A = apply_mask(A, msk)
     A = softmax_notinplace(A / size(Z, 3), dims=2)
+
     @tullio _Y[d, i, m, h] := A[i, j, h] * V[j, d, m, h]*(i != j)
     @tullio Y[dout,i,m] := _Y[demb,i,m,h] * WO[demb,dout,h]
     return Flux.softmax(Y / H, dims=1)
 end
 
-function (sa::SelfAttention)(Z::AbstractArray, W::AbstractVector)
-    WQ, WK, WV, WO, H, mask = sa.Q, sa.K, sa.V, sa.O, sa.H, sa.mask
+function (sa::SelfAttention)(Zoh::AbstractArray, W::AbstractVector; norm_layer::Function=Flux.normalise,norm_dims::Int=1)
+    E, WQ, WK, WV, WO, H, msk, pe = sa.E, sa.Q, sa.K, sa.V, sa.O, sa.H, sa.mask, sa.pe
     sw = inv(sum(W))
-    msk = build_mask(mask, size(Z, 2))
+    # msk = build_mask(mask, size(Z, 2))
+    @tullio Z[demb, i, m ] := Zoh[q,i,m]*E[q,demb] + pe[demb,i]
+    # Z = Z_ ./ sum(Z_,dims=3)
+    # Z = normalise(Z_, dims = 3)
+    Z = norm_layer(Z, dims = norm_dims)
+
     @tullio Q[i, d2, m, h] := Z[d1, i, m] * WQ[d1, d2, h] * W[m] * $sw
     @tullio K[i, d2, m, h] := Z[d1, i, m] * WK[d1, d2, h] * W[m] * $sw
     @tullio V[i, d2, m, h] := Z[d1, i, m] * WV[d1, d2, h] * W[m] * $sw
@@ -153,10 +184,16 @@ function (sa::SelfAttention)(Z::AbstractArray, W::AbstractVector)
 end
 
 
-function (sa::SelfAttention_Tied)(Z::AbstractArray)
-    WQ, WK, WV, WO, H, msk = sa.Q, sa.K, sa.V, sa.O, sa.H, sa.mask
+function (sa::SelfAttention_Tied)(Zoh::AbstractArray; norm_layer::Function=Flux.normalise,norm_dims::Int=1)
+    E, WQ, WK, WV, WO, H, msk, pe = sa.E, sa.Q, sa.K, sa.V, sa.O, sa.H, sa.mask, sa.pe
     #sw = inv(sum(W))
     #msk = build_mask(mask, size(Z, 2))
+    @tullio Z[demb, i, m ] := Zoh[q,i,m]*E[q,demb] + pe[demb,i]  
+
+    # Z = Z_ ./ sum(Z_,dims=3)
+    # Z = normalise(Z_, dims = 3)
+
+    Z = norm_layer(Z, dims = norm_dims)
 
     @tullio Q[i, d2, m, h] := Z[d1, i, m] * WQ[d1, d2, h]
     @tullio K[i, d2, m, h] := Z[d1, i, m] * WK[d1, d2, h]
@@ -169,9 +206,16 @@ function (sa::SelfAttention_Tied)(Z::AbstractArray)
     return Flux.softmax(Y / H, dims=1)
 end
 
-function (sa::SelfAttention)(Z::AbstractArray)    WQ, WK, WV, WO, H, mask = sa.Q, sa.K, sa.V, sa.O, sa.H, sa.mask
+function (sa::SelfAttention)(Zoh::AbstractArray; norm_layer::Function=Flux.normalise,norm_dims::Int=1)    
+    E, WQ, WK, WV, WO, H, msk, pe = sa.E, sa.Q, sa.K, sa.V, sa.O, sa.H, sa.mask, sa.pe
     #sw = inv(sum(W))
-    msk = build_mask(mask, size(Z, 2))
+    # msk = build_mask(mask, size(Z, 2))
+    @tullio Z[demb, i, m ] := Zoh[q,i,m]*E[q,demb] + pe[demb,i]
+    # Z = Z_ ./ sum(Z_,dims=3)
+
+    # Z = normalise(Z_, dims = 3)
+
+    Z = norm_layer(Z, dims = norm_dims)
 
     @tullio Q[i, d2, m, h] := Z[d1, i, m] * WQ[d1, d2, h]
     @tullio K[i, d2, m, h] := Z[d1, i, m] * WK[d1, d2, h]
@@ -191,7 +235,10 @@ function build_mask(masktype::Union{Nothing, Symbol}, L::Int)
             mask[i,i] = false
         end
     elseif masktype == :diagonal
-        mask = Bool.(1 .- I(L))
+        mask = ones(Bool, L,L)
+        for i in 1:L
+            mask[i,i] = false
+        end
     else
         mask = ones(Bool, L,L)
     end
@@ -215,9 +262,9 @@ end
 # end
 
 # ... scalar reduction in Tullio is ok for Array.
-function KL_loss(sa::Union{SelfAttention, SelfAttention_Tied}, Z::Array{T,3}, W::Vector{T}) where {T<:AbstractFloat}
+function KL_loss(sa::Union{SelfAttention, SelfAttention_Tied}, Z::Array{T,3}, W::Vector{T}; norm_layer::Function=Flux.normalise,norm_dims::Int=1) where {T<:AbstractFloat}
     sw = sum(W)
-    Y = sa(Z)
+    Y = sa(Z,norm_layer=norm_layer,norm_dims=norm_dims)
     @tullio loss := Z[d, i, m] * log(Y[d, i, m]) * W[m]
     return -loss / sw
 end
@@ -234,20 +281,24 @@ end
 function trainnet!(sa::Union{SelfAttention, SelfAttention_Tied},Z, W::AbstractVector{T};
     niter::Int=100,
     λ::Real=0.01,
+    norm_layer::Function=Flux.normalise,
+    norm_dims::Int=1,
     reg_fun::Function = L2_loss,
     Δt::Int=10,
     batchsize::Int=1000,
     η::Real=0.001,
     timeout::Real=10
 ) where T<:AbstractFloat
-    local_loss(sa, Z, W) = KL_loss(sa, Z, W) + λ * reg_fun(sa)
+
+    local_loss(sa, Z, W) = KL_loss(sa, Z, W, norm_layer = norm_layer, norm_dims = norm_dims) + λ * reg_fun(sa)
     λ,η = T(λ), T(η)
     evalcb = (it) -> let        
         e1 = KL_loss(sa,Z,W)
         e2 = λ * reg_fun(sa)
         @info  "Epoch $it total-loss $(e1+e2) kld $e1 l2loss $e2"
     end 
-    opt = Flux.Optimise.ADAM(η) 
+    opt = Flux.Optimise.ADAM(η)
+
     #data = Flux.DataLoader((Z, W), batchsize=batchsize)
     for it in 1:niter
         loader = Flux.DataLoader((Z, W), batchsize=batchsize, shuffle=true)
@@ -397,11 +448,26 @@ end
 function positional_enconding(demb::Int, L::Int; rt::Type{T}=Float32, ongpu::Bool=false) where {T<:AbstractFloat}
     fun = ongpu ? gpu : x->x
     pe = fun(zeros(T, demb, L))
+
     for i in 1:(demb>>1)
         for j in 1:L    
             pe[2*i, j] = sin(j / 10000^((2*i)/ demb))
-            pe[2*i + 1, j] = cos(j / 10000^((2*i - 1)/ demb))
+            pe[2*i - 1, j] = cos(j / 10000^((2*i - 1)/ demb))
         end
     end
+    if !iseven(demb)
+        for j in 1:L
+            pe[end, j] = cos(j/10000^(demb/demb))
+        end
+    end
+
     rt.(pe)
+end
+
+
+function layer_norm(x::AbstractArray{T,3}; eps::Real=1e-5) where T<:AbstractFloat
+    μ = mean(x, dims=2)
+    σ = std(x, dims=2)
+    x̂ = (x .- μ) ./ (σ .+ eps)
+    x̂
 end
