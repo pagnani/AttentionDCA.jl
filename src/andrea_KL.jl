@@ -15,7 +15,6 @@ end
 struct SelfAttention{T3,T}
     demb::Int # input dimension
     datt::Int # attention internal dimension
-    dout::Int # output dimension
     H::Int
     E::Matrix{T}
     Q::T3
@@ -29,7 +28,6 @@ end
 struct SelfAttention_Tied{T3,T}
     demb::Int # input dimension
     datt::Int # attention internal dimension
-    dout::Int # output dimension
     H::Int
     E::Matrix{T}
     Q::T3
@@ -40,13 +38,13 @@ struct SelfAttention_Tied{T3,T}
     pe::Matrix{Float64}
 end
 
-function SelfAttention(q::Int, demb::Int, datt::Int, dout::Int, H::Int, mask::Matrix{Bool}, pe::Matrix; rt::Type{T}=Float32,ongpu::Bool=false, init_fun = randn, init_scale = 1.0e-3) where {T<:AbstractFloat}
+function SelfAttention(q::Int, demb::Int, datt::Int, H::Int, mask::Matrix{Bool}, pe::Matrix; rt::Type{T}=Float32,ongpu::Bool=false, init_fun = randn, init_scale = 1.0e-3) where {T<:AbstractFloat}
     fun = ongpu ? gpu : x->x
 
     # mask ∈ [nothing, :causal, :diagonal] || error("The mask method is not valid, only :causal and :diagonal are allowed, or nothing.")
 
-    E, Q, K, V, O = init_fun(rt, q, demb) * T(init_scale), init_fun(rt, demb, datt, H) * T(init_scale), init_fun(rt, demb, datt, H) * T(init_scale), init_fun(rt, demb, demb, H) * T(init_scale), init_fun(rt, demb, dout, H) * T(init_scale)
-    SelfAttention(demb, datt, dout, H, fun(E), fun(Q), fun(K), fun(V), fun(O), mask, pe)
+    E, Q, K, V, O = init_fun(rt, q, demb) * T(init_scale), init_fun(rt, demb, datt, H) * T(init_scale), init_fun(rt, demb, datt, H) * T(init_scale), init_fun(rt, demb, datt, H) * T(init_scale), init_fun(rt, datt, q, H) * T(init_scale)
+    SelfAttention(demb, datt, H, fun(E), fun(Q), fun(K), fun(V), fun(O), mask, pe)
 end
 Flux.trainable(sa::SelfAttention) = (sa.Q,sa.K,sa.V,sa.O)
 function Base.show(io::IO, sa::SelfAttention)
@@ -55,13 +53,13 @@ function Base.show(io::IO, sa::SelfAttention)
 end
 @functor SelfAttention
 
-function SelfAttention_Tied(q::Int, demb::Int, datt::Int, dout::Int, H::Int, mask::Matrix{Bool}, pe::Matrix; rt::Type{T}=Float32,ongpu::Bool=false, init_fun = randn, init_scale = 1.0e-3) where {T<:AbstractFloat}
+function SelfAttention_Tied(q::Int, demb::Int, datt::Int, H::Int, mask::Matrix{Bool}, pe::Matrix; rt::Type{T}=Float32,ongpu::Bool=false, init_fun = randn, init_scale = 1.0e-3) where {T<:AbstractFloat}
     fun = ongpu ? gpu : x->x
 
     #mask ∈ [nothing, :causal, :diagonal] || error("The mask method is not valid, only :causal and :diagonal are allowed, or nothing.")
 
-    E, Q, K, V, O = init_fun(rt, q, demb) * T(init_scale), init_fun(rt, demb, datt, H) * T(init_scale), init_fun(rt, demb, datt, H) * T(init_scale), init_fun(rt, demb, demb, H) * T(init_scale), init_fun(rt, demb, dout, H) * T(init_scale)
-    SelfAttention_Tied(demb, datt, dout, H, fun(E), fun(Q), fun(K), fun(V), fun(O), mask, pe)
+    E, Q, K, V, O = init_fun(rt, q, demb) * T(init_scale), init_fun(rt, demb, datt, H) * T(init_scale), init_fun(rt, demb, datt, H) * T(init_scale), init_fun(rt, demb, datt, H) * T(init_scale), init_fun(rt, datt, q, H) * T(init_scale)
+    SelfAttention_Tied(demb, datt, H, fun(E), fun(Q), fun(K), fun(V), fun(O), mask, pe)
 end
 
 Flux.trainable(sa::SelfAttention_Tied) = (sa.E,sa.Q,sa.K,sa.V,sa.O)
@@ -81,7 +79,6 @@ function prepare_network(filename::String;
     datt::Int=21,
     q::Int = 21,
     demb::Int=21,
-    dout::Int=demb,
     H::Int= 32,
     tied::Bool=false,
     pos_enc::Bool=false,
@@ -101,19 +98,19 @@ function prepare_network(filename::String;
     W = rt.(W)
     msk = build_mask(mask, size(Z,2))
     if tied
-        return fun(Z),fun(W),SelfAttention_Tied(q, demb, datt, dout, H, msk, pe, ongpu=ongpu)
+        return fun(Z),fun(W),SelfAttention_Tied(q, demb, datt, H, msk, pe, ongpu=ongpu)
     else
-        return fun(Z),fun(W),SelfAttention(q, demb, datt, dout, H, msk, pe, ongpu=ongpu)
+        return fun(Z),fun(W),SelfAttention(q, demb, datt, H, msk, pe, ongpu=ongpu)
     end
 end
 
 
-function cross_attention(sa::SelfAttention_Tied,Zoh; norm_layer::Function=Flux.normalise,norm_dims::Int=1)
+function cross_attention(sa::SelfAttention_Tied,Zoh)
     E, WQ, WK, WV, msk, pe = sa.E, sa.Q, sa.K, sa.V, sa.mask, sa.pe
     #msk = build_mask(mask, size(Z,2))
     @tullio Z[demb, i, m] := Zoh[q,i,m]*E[q,demb] + pe[demb,i]  
     # Z = Z_ ./ sum(Z_,dims=3)
-    Z = norm_layer(Z, dims = norm_dims)
+    # Z = norm_layer(Z, dims = norm_dims)
     # Z = normalise(Z_, dims = 3)
 
     @tullio Q[i, d2, m, h] := Z[d1, i, m] * WQ[d1, d2, h]
@@ -124,13 +121,13 @@ function cross_attention(sa::SelfAttention_Tied,Zoh; norm_layer::Function=Flux.n
     return softmax_notinplace(A / size(Z, 3), dims=2)
 end
 
-function cross_attention(sa::SelfAttention,Zoh; norm_layer::Function=Flux.normalise,norm_dims::Int=1)
+function cross_attention(sa::SelfAttention,Zoh)
     E, WQ, WK, WV, msk, pe = sa.E, sa.Q, sa.K, sa.V, sa.mask, sa.pe
     #msk = build_mask(mask, size(Z,2))
     @tullio Z[demb, i, m ] := Zoh[q,i,m]*E[q,demb] + pe[demb,i]
     # Z = Z_ ./ sum(Z_,dims=3)
     # Z = normalise(Z_, dims = 3)
-    Z = norm_layer(Z, dims = norm_dims)
+    # Z = norm_layer(Z, dims = norm_dims)
 
     @tullio Q[i, d2, m, h] := Z[d1, i, m] * WQ[d1, d2, h]
     @tullio K[i, d2, m, h] := Z[d1, i, m] * WK[d1, d2, h]
@@ -140,7 +137,7 @@ function cross_attention(sa::SelfAttention,Zoh; norm_layer::Function=Flux.normal
     return softmax_notinplace(A, dims=2)
 end
 
-function (sa::SelfAttention_Tied)(Zoh::AbstractArray, W::AbstractVector; norm_layer::Function=Flux.normalise,norm_dims::Int=1)
+function (sa::SelfAttention_Tied)(Zoh::AbstractArray, W::AbstractVector)
     E, WQ, WK, WV, WO, H, msk, pe = sa.E, sa.Q, sa.K, sa.V, sa.O, sa.H, sa.mask, sa.pe
     sw = inv(sum(W))
     #msk = build_mask(mask, size(Z, 2))
@@ -148,7 +145,7 @@ function (sa::SelfAttention_Tied)(Zoh::AbstractArray, W::AbstractVector; norm_la
     @tullio Z[demb, i, m ] := Zoh[q,i,m]*E[q,demb] + pe[demb,i]
     # Z = Z_ ./ sum(Z_,dims=3)
     # Z = normalise(Z_, dims = 3)
-    Z = norm_layer(Z, dims = norm_dims)
+    # Z = norm_layer(Z, dims = norm_dims)
 
     @tullio Q[i, d2, m, h] := Z[d1, i, m] * WQ[d1, d2, h] * W[m] * $sw 
     @tullio K[i, d2, m, h] := Z[d1, i, m] * WK[d1, d2, h] * W[m] * $sw
@@ -163,14 +160,14 @@ function (sa::SelfAttention_Tied)(Zoh::AbstractArray, W::AbstractVector; norm_la
     return Flux.softmax(Y / H, dims=1)
 end
 
-function (sa::SelfAttention)(Zoh::AbstractArray, W::AbstractVector; norm_layer::Function=Flux.normalise,norm_dims::Int=1)
+function (sa::SelfAttention)(Zoh::AbstractArray, W::AbstractVector)
     E, WQ, WK, WV, WO, H, msk, pe = sa.E, sa.Q, sa.K, sa.V, sa.O, sa.H, sa.mask, sa.pe
     sw = inv(sum(W))
     # msk = build_mask(mask, size(Z, 2))
     @tullio Z[demb, i, m ] := Zoh[q,i,m]*E[q,demb] + pe[demb,i]
     # Z = Z_ ./ sum(Z_,dims=3)
     # Z = normalise(Z_, dims = 3)
-    Z = norm_layer(Z, dims = norm_dims)
+    # Z = norm_layer(Z, dims = norm_dims)
 
     @tullio Q[i, d2, m, h] := Z[d1, i, m] * WQ[d1, d2, h] * W[m] * $sw
     @tullio K[i, d2, m, h] := Z[d1, i, m] * WK[d1, d2, h] * W[m] * $sw
@@ -184,16 +181,19 @@ function (sa::SelfAttention)(Zoh::AbstractArray, W::AbstractVector; norm_layer::
 end
 
 
-function (sa::SelfAttention_Tied)(Zoh::AbstractArray; norm_layer::Function=Flux.normalise,norm_dims::Int=1)
+function (sa::SelfAttention_Tied)(Zoh::AbstractArray; emb::Bool = true)
     E, WQ, WK, WV, WO, H, msk, pe = sa.E, sa.Q, sa.K, sa.V, sa.O, sa.H, sa.mask, sa.pe
     #sw = inv(sum(W))
     #msk = build_mask(mask, size(Z, 2))
-    @tullio Z[demb, i, m ] := Zoh[q,i,m]*E[q,demb] + pe[demb,i]  
-
+    if emb
+        @tullio Z[demb, i, m ] := Zoh[q,i,m]*E[q,demb] + pe[demb,i]  
+    else
+        @tullio Z[q, i, m ] := Zoh[q,i,m] + pe[q,i]
+    end  
     # Z = Z_ ./ sum(Z_,dims=3)
     # Z = normalise(Z_, dims = 3)
 
-    Z = norm_layer(Z, dims = norm_dims)
+    # Z = norm_layer(Z, dims = norm_dims)
 
     @tullio Q[i, d2, m, h] := Z[d1, i, m] * WQ[d1, d2, h]
     @tullio K[i, d2, m, h] := Z[d1, i, m] * WK[d1, d2, h]
@@ -206,16 +206,20 @@ function (sa::SelfAttention_Tied)(Zoh::AbstractArray; norm_layer::Function=Flux.
     return Flux.softmax(Y / H, dims=1)
 end
 
-function (sa::SelfAttention)(Zoh::AbstractArray; norm_layer::Function=Flux.normalise,norm_dims::Int=1)    
+function (sa::SelfAttention)(Zoh::AbstractArray; emb::Bool = true)    
     E, WQ, WK, WV, WO, H, msk, pe = sa.E, sa.Q, sa.K, sa.V, sa.O, sa.H, sa.mask, sa.pe
     #sw = inv(sum(W))
     # msk = build_mask(mask, size(Z, 2))
-    @tullio Z[demb, i, m ] := Zoh[q,i,m]*E[q,demb] + pe[demb,i]
+    if emb
+        @tullio Z[demb, i, m ] := Zoh[q,i,m]*E[q,demb] + pe[demb,i]  
+    else
+        @tullio Z[q, i, m ] := Zoh[q,i,m] + pe[q,i]
+    end  
     # Z = Z_ ./ sum(Z_,dims=3)
 
     # Z = normalise(Z_, dims = 3)
 
-    Z = norm_layer(Z, dims = norm_dims)
+    # Z = norm_layer(Z, dims = norm_dims)
 
     @tullio Q[i, d2, m, h] := Z[d1, i, m] * WQ[d1, d2, h]
     @tullio K[i, d2, m, h] := Z[d1, i, m] * WK[d1, d2, h]
@@ -262,9 +266,9 @@ end
 # end
 
 # ... scalar reduction in Tullio is ok for Array.
-function KL_loss(sa::Union{SelfAttention, SelfAttention_Tied}, Z::Array{T,3}, W::Vector{T}; norm_layer::Function=Flux.normalise,norm_dims::Int=1) where {T<:AbstractFloat}
+function KL_loss(sa::Union{SelfAttention, SelfAttention_Tied}, Z::Array{T,3}, W::Vector{T}; emb::Bool = true) where {T<:AbstractFloat}
     sw = sum(W)
-    Y = sa(Z,norm_layer=norm_layer,norm_dims=norm_dims)
+    Y = sa(Z, emb = emb)
     @tullio loss := Z[d, i, m] * log(Y[d, i, m]) * W[m]
     return -loss / sw
 end
@@ -281,21 +285,24 @@ end
 function trainnet!(sa::Union{SelfAttention, SelfAttention_Tied},Z, W::AbstractVector{T};
     niter::Int=100,
     λ::Real=0.01,
-    norm_layer::Function=Flux.normalise,
-    norm_dims::Int=1,
+    emb::Bool = true,
     reg_fun::Function = L2_loss,
     Δt::Int=10,
     batchsize::Int=1000,
+    savefile::Union{String, Nothing}=nothing,
     η::Real=0.001,
     timeout::Real=10
 ) where T<:AbstractFloat
 
-    local_loss(sa, Z, W) = KL_loss(sa, Z, W, norm_layer = norm_layer, norm_dims = norm_dims) + λ * reg_fun(sa)
+    local_loss(sa, Z, W) = KL_loss(sa, Z, W, emb = emb) + λ * reg_fun(sa)
     λ,η = T(λ), T(η)
+
+    savefile !== nothing && (file = open(savefile,"a"))
     evalcb = (it) -> let        
         e1 = KL_loss(sa,Z,W)
         e2 = λ * reg_fun(sa)
         @info  "Epoch $it total-loss $(e1+e2) kld $e1 l2loss $e2"
+        savefile !== nothing && println(file, "Epoch $it total-loss $(e1+e2) kld $e1 l2loss $e2")
     end 
     opt = Flux.Optimise.ADAM(η)
 
@@ -308,8 +315,9 @@ function trainnet!(sa::Union{SelfAttention, SelfAttention_Tied},Z, W::AbstractVe
         end
         if it % Δt == 0
             evalcb(it)
-        end
+        end 
     end
+    savefile !== nothing && close(file)
     sa
 end
 
@@ -465,9 +473,14 @@ function positional_enconding(demb::Int, L::Int; rt::Type{T}=Float32, ongpu::Boo
 end
 
 
-function layer_norm(x::AbstractArray{T,3}; eps::Real=1e-5) where T<:AbstractFloat
-    μ = mean(x, dims=2)
-    σ = std(x, dims=2)
-    x̂ = (x .- μ) ./ (σ .+ eps)
-    x̂
+function msa_distance(Z::Matrix,Zs::Matrix)
+    N,M = size(Z)
+    Ns,Ms = size(Zs)
+    d = zeros(Ns)
+    for i in 1:Ns
+        for j in 1:N
+            d[i] += sum(Z[j,:] .!= Zs[i,:])
+        end
+    end
+    return d
 end
