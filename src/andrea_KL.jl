@@ -49,7 +49,7 @@ end
 Flux.trainable(sa::SelfAttention) = (sa.Q,sa.K,sa.V,sa.O)
 function Base.show(io::IO, sa::SelfAttention)
     ongpu = typeof(sa.V) <: CuArray
-    print(io, "SelfAttention{$(eltype(sa.Q))}[demb=$(sa.demb), datt=$(sa.datt), dout=$(sa.dout), H=$(sa.H), numpara=$(sum(length.(Flux.params(sa)))), onpgu=$ongpu)]")
+    print(io, "SelfAttention{$(eltype(sa.Q))}[demb=$(sa.demb), datt=$(sa.datt), H=$(sa.H), numpara=$(sum(length.(Flux.params(sa)))), onpgu=$ongpu)]")
 end
 @functor SelfAttention
 
@@ -66,7 +66,7 @@ Flux.trainable(sa::SelfAttention_Tied) = (sa.E,sa.Q,sa.K,sa.V,sa.O)
 
 function Base.show(io::IO, sa::SelfAttention_Tied)
     ongpu = typeof(sa.V) <: CuArray
-    print(io, "SelfAttention_Tied{$(eltype(sa.Q))}[demb=$(sa.demb), datt=$(sa.datt), dout=$(sa.dout), H=$(sa.H), numpara=$(sum(length.(Flux.params(sa)))), onpgu=$ongpu]")
+    print(io, "SelfAttention_Tied{$(eltype(sa.Q))}[demb=$(sa.demb), datt=$(sa.datt), H=$(sa.H), numpara=$(sum(length.(Flux.params(sa)))), onpgu=$ongpu]")
 end
 
 @functor SelfAttention_Tied
@@ -476,11 +476,13 @@ end
 function msa_distance(Z::Matrix,Zs::Matrix)
     N,M = size(Z)
     Ns,Ms = size(Zs)
-    d = zeros(Ns)
-    for i in 1:Ns
-        for j in 1:N
-            d[i] += sum(Z[j,:] .!= Zs[i,:])
+    m = minimum([M,Ms])
+    d = zeros(M,Ms)
+
+    for m1 in 1:M
+        for m2 in 1:Ms
+            d[m1,m2] += sum(Z[:,m1] .!= Zs[:,m2])
         end
     end
-    return d
+    @info "Max distance $(maximum(d)), Min distance $(minimum(d)), Mean distance $(mean(d))"
 end
