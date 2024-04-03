@@ -46,7 +46,7 @@ function SelfAttention(q::Int, demb::Int, datt::Int, H::Int, mask::Matrix{Bool},
     E, Q, K, V, O = init_fun(rt, q, demb) * T(init_scale), init_fun(rt, demb, datt, H) * T(init_scale), init_fun(rt, demb, datt, H) * T(init_scale), init_fun(rt, demb, datt, H) * T(init_scale), init_fun(rt, datt, q, H) * T(init_scale)
     SelfAttention(demb, datt, H, fun(E), fun(Q), fun(K), fun(V), fun(O), mask, pe)
 end
-Flux.trainable(sa::SelfAttention) = (sa.Q,sa.K,sa.V,sa.O)
+Flux.trainable(sa::SelfAttention) = (sa.E,sa.Q,sa.K,sa.V,sa.O)
 function Base.show(io::IO, sa::SelfAttention)
     ongpu = typeof(sa.V) <: CuArray
     print(io, "SelfAttention{$(eltype(sa.Q))}[demb=$(sa.demb), datt=$(sa.datt), H=$(sa.H), numpara=$(sum(length.(Flux.params(sa)))), onpgu=$ongpu)]")
