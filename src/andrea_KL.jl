@@ -108,7 +108,8 @@ end
 function cross_attention(sa::SelfAttention_Tied,Zoh)
     E, WQ, WK, WV, msk, pe = sa.E, sa.Q, sa.K, sa.V, sa.mask, sa.pe
     #msk = build_mask(mask, size(Z,2))
-    @tullio Z[demb, i, m] := Zoh[q,i,m]*E[q,demb] + pe[demb,i]  
+    @tullio Z_[demb, i, m ] := Zoh[q,i,m]*E[q,demb]
+    Z = Z_ .+ pe
     # Z = Z_ ./ sum(Z_,dims=3)
     # Z = norm_layer(Z, dims = norm_dims)
     # Z = normalise(Z_, dims = 3)
@@ -124,7 +125,9 @@ end
 function cross_attention(sa::SelfAttention,Zoh)
     E, WQ, WK, WV, msk, pe = sa.E, sa.Q, sa.K, sa.V, sa.mask, sa.pe
     #msk = build_mask(mask, size(Z,2))
-    @tullio Z[demb, i, m ] := Zoh[q,i,m]*E[q,demb] + pe[demb,i]
+    @tullio Z_[demb, i, m ] := Zoh[q,i,m]*E[q,demb]
+    Z = Z_ .+ pe
+    
     # Z = Z_ ./ sum(Z_,dims=3)
     # Z = normalise(Z_, dims = 3)
     # Z = norm_layer(Z, dims = norm_dims)
@@ -142,7 +145,8 @@ function (sa::SelfAttention_Tied)(Zoh::AbstractArray, W::AbstractVector)
     sw = inv(sum(W))
     #msk = build_mask(mask, size(Z, 2))
 
-    @tullio Z[demb, i, m ] := Zoh[q,i,m]*E[q,demb] + pe[demb,i]
+    @tullio Z_[demb, i, m ] := Zoh[q,i,m]*E[q,demb]
+    Z = Z_ .+ pe
     # Z = Z_ ./ sum(Z_,dims=3)
     # Z = normalise(Z_, dims = 3)
     # Z = norm_layer(Z, dims = norm_dims)
@@ -164,7 +168,8 @@ function (sa::SelfAttention)(Zoh::AbstractArray, W::AbstractVector)
     E, WQ, WK, WV, WO, H, msk, pe = sa.E, sa.Q, sa.K, sa.V, sa.O, sa.H, sa.mask, sa.pe
     sw = inv(sum(W))
     # msk = build_mask(mask, size(Z, 2))
-    @tullio Z[demb, i, m ] := Zoh[q,i,m]*E[q,demb] + pe[demb,i]
+    @tullio Z_[demb, i, m ] := Zoh[q,i,m]*E[q,demb]
+    Z = Z_ .+ pe
     # Z = Z_ ./ sum(Z_,dims=3)
     # Z = normalise(Z_, dims = 3)
     # Z = norm_layer(Z, dims = norm_dims)
@@ -186,9 +191,10 @@ function (sa::SelfAttention_Tied)(Zoh::AbstractArray; emb::Bool = true)
     #sw = inv(sum(W))
     #msk = build_mask(mask, size(Z, 2))
     if emb
-        @tullio Z[demb, i, m ] := Zoh[q,i,m]*E[q,demb] + pe[demb,i]  
+        @tullio Z_[demb, i, m ] := Zoh[q,i,m]*E[q,demb]
+        Z = Z_ .+ pe  
     else
-        @tullio Z[q, i, m ] := Zoh[q,i,m] + pe[q,i]
+        @tullio Z[q, i, m] := Zoh[q,i,m] + pe[q,i]
     end  
     # Z = Z_ ./ sum(Z_,dims=3)
     # Z = normalise(Z_, dims = 3)
@@ -211,7 +217,8 @@ function (sa::SelfAttention)(Zoh::AbstractArray; emb::Bool = true)
     #sw = inv(sum(W))
     # msk = build_mask(mask, size(Z, 2))
     if emb
-        @tullio Z[demb, i, m ] := Zoh[q,i,m]*E[q,demb] + pe[demb,i]  
+        @tullio Z_[demb, i, m ] := Zoh[q,i,m]*E[q,demb]
+        Z = Z_ .+ pe  
     else
         @tullio Z[q, i, m ] := Zoh[q,i,m] + pe[q,i]
     end  
@@ -291,8 +298,7 @@ function trainnet!(sa::Union{SelfAttention, SelfAttention_Tied},Z, W::AbstractVe
     batchsize::Int=1000,
     savefile::Union{String, Nothing}=nothing,
     η::Real=0.001,
-    timeout::Real=10
-) where T<:AbstractFloat
+    timeout::Real=10) where T<:AbstractFloat
 
     local_loss(sa, Z, W) = KL_loss(sa, Z, W, emb = emb) + λ * reg_fun(sa)
     λ,η = T(λ), T(η)
