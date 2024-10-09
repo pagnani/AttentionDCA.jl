@@ -38,7 +38,7 @@ function trainer(D::Tuple{Matrix{T1}, Vector{T2}},n_epochs::Int;
     λ::Float64 = 0.001,
     init_m = nothing, 
     init_fun = rand, 
-    structfile::String = "precompilation_data/PF00014_struct.dat",
+    structfile::Union{Nothing, String} = nothing,
     verbose = true,
     savefile::Union{String, Nothing} = nothing) where {T1<:Integer, T2<:Real}
     
@@ -54,6 +54,21 @@ function trainer(D::Tuple{Matrix{T1}, Vector{T2}},n_epochs::Int;
 
     savefile !== nothing && (file = open(savefile,"a"))
     
+    function show_info(i,structfile)
+        if structfile !== nothing
+            PPV = compute_PPV(score(m.Q,m.K,m.V),structfile)
+            l = round(loss(m.Q, m.K, m.V, D[1], D[2], λ = λ),digits=5) 
+            p = round((PPV[N]),digits=3)
+            verbose && println("Epoch $i loss = $l \t PPV@L = $p \t First Error = $(findfirst(x->x!=1, PPV))")
+            savefile !== nothing && println(file, "Epoch 0 loss = $l \t PPV@L = $p \t First Error = $(findfirst(x->x!=1, PPV))")
+        else
+            l = round(loss(m.Q, m.K, m.V, D[1], D[2], λ = λ),digits=5) 
+            verbose && println("Epoch $i loss = $l")
+            savefile !== nothing && println("Epoch 0 loss = $l")
+        end
+    end
+
+
     for i in 1:n_epochs
         loader = DataLoader(D, batchsize = batch_size, shuffle = true)
         for (z,w) in loader
@@ -61,13 +76,7 @@ function trainer(D::Tuple{Matrix{T1}, Vector{T2}},n_epochs::Int;
             g = gradient(x->loss(x.Q, x.K, x.V, z, _w, λ = λ),m)[1];
             update!(t,m,g)
         end
-
-        s = score(m.Q,m.K,m.V);
-        PPV = compute_PPV(s,structfile)
-        l = round(loss(m.Q, m.K, m.V, D[1], D[2], λ = λ),digits=5) 
-        p = round((PPV[N]),digits=3)
-        verbose && println("Epoch $i loss = $l \t PPV@L = $p \t First Error = $(findfirst(x->x!=1, PPV))")
-        savefile !== nothing && println(file, "Epoch $i loss = $l \t PPV@L = $p \t First Error = $(findfirst(x->x!=1, PPV))")
+        show_info(i, structfile)
     end
 
     savefile !== nothing && close(file)
