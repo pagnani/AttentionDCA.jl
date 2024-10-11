@@ -31,5 +31,6 @@ These take as as inputs either tuples with integer-encoded MSA and weight vector
 All data used in this study is publicly available at [GitHub/francescocaredda/DataAttentionDCA](https://github.com/francescocaredda/DataAttentionDCA) in the "data" folder.
 
 
+## Inquiries 
 
 Any question can directed to francesco.caredda@polito.it
