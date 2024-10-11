@@ -21,4 +21,7 @@ artrainer, stat_artrainer,
 multi_trainer, stat_multi_trainer
 multi_artrainer
 ```
-These take as as inputs either tuples with integer-encoded MSA and weight vector $(Z,W)$ or a path to the fasta file containing the sequences of the protein family under study.
+These take as as inputs either tuples with integer-encoded MSA and weight vector $(Z,W)$ or a path to the fasta file containing the sequences of the protein family under study. To get more details on the use of each single function use the help function in the Julia repl, e.g.
+```
+?trainer
+```
