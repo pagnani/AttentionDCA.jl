@@ -14,8 +14,11 @@ pkg> add https://github.com/pagnani/AttentionDCA.jl.git
 ```
 ## Use
 
-The training functions  
+The functions for the training are 
 ```
-trainer, stat_trainer, artrainer, stat_artrainer, multi_trainer, multi_artrainer, stat_multi_trainer
+trainer, stat_trainer, 
+artrainer, stat_artrainer, 
+multi_trainer, stat_multi_trainer
+multi_artrainer
 ```
-take as as inputs either tuples with integer-encoded MSA and weight vector $(Z,W)$ or a path to the fasta file containing the sequences of the protein family under study.
+These take as as inputs either tuples with integer-encoded MSA and weight vector $(Z,W)$ or a path to the fasta file containing the sequences of the protein family under study.
