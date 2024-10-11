@@ -10,7 +10,7 @@ import Flux.Optimise: update!
 import Flux.Optimisers: setup
 import NNlib
 import NNlib:dot_product_attention,batched_mul
-#using KernelAbstractions
+
 
 using LoopVectorization
 using Tullio 
@@ -26,15 +26,11 @@ using Random, Statistics
 
 export trainer, stat_trainer, artrainer, stat_artrainer, multi_trainer, multi_artrainer, stat_multi_trainer
 export score, compute_freq, compute_PPV, sample, quickread
-export cpu, gpu
 
 include("utils.jl")
 include("dcascore.jl")
 include("attention.jl")
 include("multifam.jl")
 include("autoregressive.jl")
-#include("andrea_KL.jl")
 #include("precompile.jl")
-#include("embedding.jl")
-#include("embedding_KL.jl")
 end

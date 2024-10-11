@@ -1,3 +1,13 @@
+"""
+Function to compute the loss of the attention model given (Q,K,V), the MSA and the weight vector of a protein family.\n
+If the MSA contains M sequence of length L, encoded with integers from 1 to q, and the attention model has H heads and inner dimension d, then:\n 
+
+*Q and K are HxdxN matrices\n
+*V is a Hxqxq matrix\n
+*Z is the LxM MSA matrix\n
+*W is the M-dimensional weight vector\n
+*λ is the regularization parameter\n
+"""
 function loss(Q::Array{T1, 3},
     K::Array{T1, 3},
     V::Array{T1, 3}, 
@@ -30,6 +40,24 @@ end
 
 loss(m::NamedTuple{(:Q, :K, :V)}, Z::Matrix{T2}, weights::Vector{T1}; kwds...) where {T1<: Real, T2 <: Integer} = loss(m..., Z, weights; kwds...) 
 
+
+"""
+
+    trainer(D::Tuple{Matrix{T1}, Vector{T2}},n_epochs::Int,...)
+
+Function to train the attention model given a tuple D = (Z,W) containing the MSA and the weight vector of a protein family, and the number of epochs for the training.
+Optional arguments are: \n
+*H: number of heads \n
+*d: inner dimension \n
+*η: learning parameter \n
+*λ: regularization parameter \n
+*init_m: initialization for the (Q,K,V) parameters, default nothing \n
+*init_fun: initialization function for the (Q,K,V) parameters, default rand \n
+*structfile: file containing the structure of the protein family used for printing the Positive Predicted Value of the model during learning, default nothing \n
+*savefile: file where to save the log, default nothing \n
+
+It returns the trained model m = (Q,K,V)
+"""
 function trainer(D::Tuple{Matrix{T1}, Vector{T2}},n_epochs::Int; 
     H::Int = 32,
     d::Int = 23,
@@ -83,6 +111,13 @@ function trainer(D::Tuple{Matrix{T1}, Vector{T2}},n_epochs::Int;
     return m
 end
 
+
+"""
+
+    trainer(filename::String,n_epochs::Int,...)
+
+Function to train the attention model starting from a fasta file containing the MSA of a protein family.
+"""
 function trainer(filename::String, n_epochs::Int;
     theta::Union{Symbol,Real}=:auto,
     max_gap_fraction::Real=0.9,
@@ -98,7 +133,12 @@ function trainer(filename::String, n_epochs::Int;
 end
 
 
-
+"""
+        stat_trainer(filename::String,n_sim::Int,...)
+Function to trainer the model multiple times and return a contact score given by maxiumum through each single shot score for each contact pair.\n
+*n_sim: number of simulations\n
+*n_epochs: number of epochs for each simulation\n
+"""
 function stat_trainer(filename::String, n_sim::Int;
     n_epochs::Int = 100,
     verbose = true,

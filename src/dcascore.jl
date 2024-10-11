@@ -31,6 +31,12 @@ function compute_referencescore(score,dist::Dict; mindist::Int=6, cutoff::Number
     out
 end
 
+"""
+    score(Q, K, V; min_separation::Int=6
+Function to compute the Frobenious contact score of the interaction matrix given the (Q,K,V) matrices. \n 
+Argument ‘min_separation’ is the minimum separation between the residues to be considered as a possible non-trivial contact. Default value is 6. \n
+The function returns a vector of tuple containing the residue pair and their contact score.
+"""
 function score(Q, K, V; min_separation::Int=6)
     
     H,d,L = size(Q)
@@ -51,6 +57,10 @@ end
 
 score(m::NamedTuple; min_separation::Int=6) = score(m..., min_separation = min_separation)
 
+"""
+    score(Jtens; min_separation::Int=6)
+Function to compute the Frobenious contact score directly from the trained model m = (Q,K,V)
+"""
 function score(Jtens; min_separation::Int=6)
     q,q,L,L = size(Jtens)
     
@@ -102,11 +112,25 @@ function compute_ranking(S::Matrix{Float64}, min_separation::Int = 6)
     return R 
 end
 
+
+"""
+    compute_PPV(score::Vector{Tuple{Int,Int,Float64}}, filestruct::String; min_separation::Int = 6)
+Function to compute the Positive Predictive Value (PPV) from a generic score vector. \n
+Argument ‘min_separation’ is the minimum separation between the residues to be considered as a possible non-trivial contact. Default value is 6. \n
+Argument ‘filestruct’ is the path to the file containing the residue pair distances. \n
+"""
 function compute_PPV(score::Vector{Tuple{Int,Int,Float64}}, filestruct::String; min_separation::Int = 6)
     dist = compute_residue_pair_dist(filestruct)
     return map(x->x[4], compute_referencescore(score, dist, mindist = min_separation))
 end
 
+"""
+    compute_PPV(arnet::ArDCA.ArNet, arvar::ArDCA.ArVar, seqid::Int64, filestruct::String; pc::Float64=0.1,min_separation::Int=6)
+Function to compute the Positive Predictive Value (PPV) from the autoregressive model ArNet and ArVar. \n
+Argument ‘min_separation’ is the minimum separation between the residues to be considered as a possible non-trivial contact. Default value is 6. \n
+Argument ‘filestruct’ is the path to the file containing the residue pair distances. \n
+Argument ‘seqid’ is the wild-type sequence identifier within the MSA from which the epistatic score is computed. \n
+"""
 function compute_PPV(arnet::ArDCA.ArNet, arvar::ArDCA.ArVar, seqid::Int64, filestruct::String; pc::Float64=0.1,min_separation::Int=6)
     score = ArDCA.epistatic_score(arnet, arvar, seqid, pc = pc, min_separation = min_separation)
     return compute_PPV(score, filestruct, min_separation = min_separation)

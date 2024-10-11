@@ -1,3 +1,13 @@
+"""
+Function to compute the loss of the autoregressive attention model given (Q,K,V), the MSA and the weight vector of a protein family.\n
+If the MSA contains M sequence of length L, encoded with integers from 1 to q, and the attention model has H heads and inner dimension d, then:\n 
+
+*Q and K are HxdxN matrices\n
+*V is a Hxqxq matrix\n
+*Z is the LxM MSA matrix\n
+*W is the M-dimensional weight vector\n
+*λ is the regularization parameter\n
+"""
 function arloss(Q::Array{T1, 3},
     K::Array{T1, 3},
     V::Array{T1, 3}, 
@@ -25,6 +35,23 @@ end
 
 arloss(m::NamedTuple{(:Q, :K, :V)}, Z::Matrix{T1}, weights::Vector{T2}; kwds...) where {T1 <: Integer, T2 <: Real} = arloss(m..., Z, weights; kwds...)
 
+"""
+
+    artrainer(D::Tuple{Matrix{T1}, Vector{T2}},n_epochs::Int,...)
+
+Function to train the autoregressive attention model given a tuple D = (Z,W) containing the MSA and the weight vector of a protein family, and the number of epochs for the training.
+Optional arguments are: \n
+*H: number of heads \n
+*d: inner dimension \n
+*η: learning parameter \n
+*λ: regularization parameter \n
+*init_m: initialization for the (Q,K,V) parameters, default nothing \n
+*init_fun: initialization function for the (Q,K,V) parameters, default rand \n
+*structfile: file containing the structure of the protein family used for printing the Positive Predicted Value of the model during learning, default nothing \n
+*savefile: file where to save the log, default nothing \n
+
+It returns a tuple with ArNet and ArVar (ref ArDCA.jl) and the trained model m = (Q,K,V)
+"""
 function artrainer(D::Tuple{Matrix{T1}, Vector{T2}}, n_epochs::Int, idxperm::Vector{Int}; 
     init_m = nothing,
     η::Float64 = 0.005, 
@@ -83,6 +110,12 @@ function artrainer(D::Tuple{Matrix{T1}, Vector{T2}}, n_epochs::Int, idxperm::Vec
     return arnet, arvar, m
 end
 
+"""
+
+    artrainer(filename::String,n_epochs::Int,...)
+
+Function to train the autoregressive attention model starting from a fasta file containing the MSA of a protein family.
+"""
 function artrainer(filename::String, n_epochs::Int;
     permorder::Union{Symbol, Vector{Int}} = :NATURAL, 
     theta::Union{Symbol,Real}=:auto,
@@ -119,6 +152,13 @@ function artrainer(filename::String, n_epochs::Int;
     artrainer(data, n_epochs, idxperm; verbose = verbose, kwds...)
 end
 
+
+"""
+        stat_trainer(filename::String,n_sim::Int,...)
+Function to trainer the autoregressive model multiple times and return a contact score given by maxiumum through each single shot score for each contact pair.\n
+*n_sim: number of simulations\n
+*n_epochs: number of epochs for each simulation\n
+"""
 function stat_artrainer(filename::String, n_sim::Int;
     n_epochs = 100,
     verbose = true,
