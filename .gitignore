@@ -10,3 +10,5 @@ src/andrea_KL.jl
 src/embedding.jl
 src/embedding_KL.jl
 src/precompile.jl
+notebooks/*-checkpoints.ipynb
+julia-notebook/.ipynb_checkpoints/ExampleAttentionDCA-checkpoint.ipynb
