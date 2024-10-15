@@ -26,6 +26,8 @@ These take as as inputs either tuples with integer-encoded MSA and weight vector
 ?trainer
 ```
 
+A detailed example of the use of the package can be found inside `notebooks/ExampleAttentionDCA`.
+
 ## Data
 
 All data used in this study is publicly available at [GitHub/francescocaredda/DataAttentionDCA](https://github.com/francescocaredda/DataAttentionDCA) in the "data" folder.
