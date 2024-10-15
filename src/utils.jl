@@ -101,8 +101,23 @@ function compute_empirical_freqs(Z::AbstractArray{Ti,2}, W::AbstractVector{Float
     f
 end
 
-compute_freq(Z::Matrix) = compute_weighted_frequencies(Matrix{Int8}(Z), fill(1/size(Z,2), size(Z,2)))
+"""
+    compute_freq(Z::Matrix,W::Vector{Float64})
+Function that returns a tuple with the single and pairwise weighted frequencies of the alignment Z and weigth vector W.
+
+# Examples
+```
+julia> f1, f2 = compute_freq(Z,W)
+```
+"""
 compute_freq(Z::Matrix,W::Vector{Float64}) = compute_weighted_frequencies(Matrix{Int8}(Z), W)
+
+
+"""
+    compute_freq(Z::Matrix)
+Function that returns a tuple with the single and pairwise frequencies of the alignment Z. The weight vector is set to 1/M, where M is the number of sequences in the alignment.
+"""
+compute_freq(Z::Matrix) = compute_weighted_frequencies(Matrix{Int8}(Z), fill(1/size(Z,2), size(Z,2)))
 
 
 function entropy(Z::AbstractArray{Ti,2}, W::AbstractVector{Float64}) where {Ti<:Integer}

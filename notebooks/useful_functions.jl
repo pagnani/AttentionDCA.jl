@@ -157,5 +157,5 @@ attention_PPV(Q,K,V, k, version, structure; sym = true, APC = false, sqr = false
 
 attention_PPV(Q,K,V, version, structure; sym = true, APC = false, sqr = false) = compute_PPV(k_score(Q,K,V, size(Q,3)^2, version, sym = sym, APC = APC, sqr = sqr), structure)
 
-
-
+#Given a LxL matrix, representing the positional information of the alignment, this function computes its coupling score
+score_from_matrix(A) = sort([(j,i,A[j,i]) for i in 2:size(A,2) for j in 1:i-1], by = x->x[3], rev = true)

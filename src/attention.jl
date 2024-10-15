@@ -1,12 +1,11 @@
 """
 Function to compute the loss of the attention model given (Q,K,V), the MSA and the weight vector of a protein family.\n
 If the MSA contains M sequence of length L, encoded with integers from 1 to q, and the attention model has H heads and inner dimension d, then:\n 
-
-*Q and K are HxdxN matrices\n
-*V is a Hxqxq matrix\n
-*Z is the LxM MSA matrix\n
-*W is the M-dimensional weight vector\n
-*λ is the regularization parameter\n
+    Q and K are HxdxN matrices\n
+    V is a Hxqxq matrix\n
+    Z is the LxM MSA matrix\n
+    W is the M-dimensional weight vector\n
+    λ is the regularization parameter\n
 """
 function loss(Q::Array{T1, 3},
     K::Array{T1, 3},
@@ -47,16 +46,21 @@ loss(m::NamedTuple{(:Q, :K, :V)}, Z::Matrix{T2}, weights::Vector{T1}; kwds...) w
 
 Function to train the attention model given a tuple D = (Z,W) containing the MSA and the weight vector of a protein family, and the number of epochs for the training.
 Optional arguments are: \n
-*H: number of heads \n
-*d: inner dimension \n
-*η: learning parameter \n
-*λ: regularization parameter \n
-*init_m: initialization for the (Q,K,V) parameters, default nothing \n
-*init_fun: initialization function for the (Q,K,V) parameters, default rand \n
-*structfile: file containing the structure of the protein family used for printing the Positive Predicted Value of the model during learning, default nothing \n
-*savefile: file where to save the log, default nothing \n
+    H: number of heads
+    d: inner dimension
+    η: learning parameter
+    λ: regularization parameter
+    init_m: initialization for the (Q,K,V) parameters, default nothing 
+    init_fun: initialization function for the (Q,K,V) parameters, default rand 
+    structfile: file containing the structure of the protein family used for printing the Positive Predicted Value of the model during learning, default nothing 
+    savefile: file where to save the log, default nothing
 
-It returns the trained model m = (Q,K,V)
+It returns a structure out::OutAttStd containing a NamedTuple with the trained model out.m = (Q,K,V).
+# Examples
+```
+julia> out = trainer((Z,W),100,H=32,d=23,η=0.005,λ=0.001,verbose=true,savefile="log.txt");
+julia> out.m
+```
 """
 function trainer(D::Tuple{Matrix{T1}, Vector{T2}},n_epochs::Int; 
     H::Int = 32,
@@ -108,7 +112,7 @@ function trainer(D::Tuple{Matrix{T1}, Vector{T2}},n_epochs::Int;
     end
 
     savefile !== nothing && close(file)
-    return m
+    return AttentionDCA.AttOutStd(m, nothing)
 end
 
 
@@ -117,6 +121,11 @@ end
     trainer(filename::String,n_epochs::Int,...)
 
 Function to train the attention model starting from a fasta file containing the MSA of a protein family.
+# Examples
+```
+julia> out = trainer("file.fasta",100,H=32,d=23,η=0.005,λ=0.001,verbose=true,savefile="log.txt");
+julia> out.m
+```
 """
 function trainer(filename::String, n_epochs::Int;
     theta::Union{Symbol,Real}=:auto,
@@ -136,8 +145,17 @@ end
 """
         stat_trainer(filename::String,n_sim::Int,...)
 Function to trainer the model multiple times and return a contact score given by maxiumum through each single shot score for each contact pair.\n
-*n_sim: number of simulations\n
-*n_epochs: number of epochs for each simulation\n
+It outputs a structure out::AttOutStd containing the Frobenious score of the family: out.score\n
+    n_sim: number of simulations
+    n_epochs: number of epochs for each simulation
+
+# Examples
+```
+julia> out = stat_trainer("file.fasta",20,n_epochs=100);
+julia> out.score 
+```
+
+
 """
 function stat_trainer(filename::String, n_sim::Int;
     n_epochs::Int = 100,
@@ -146,10 +164,11 @@ function stat_trainer(filename::String, n_sim::Int;
     Z,W = AttentionDCA.quickread(filename)
     s = []
     for _ in 1:n_sim
-        m = trainer((Z,W), n_epochs; verbose = verbose, kwds...)
-        push!(s,score(m...))
+        out = trainer((Z,W), n_epochs; verbose = verbose, kwds...)
+        push!(s,score(out.m...))
     end
     s = vcat(s...)
-    return unique(x->x[1:2],sort(s, by = x -> x[3], rev = true))
+    #return unique(x->x[1:2],sort(s, by = x -> x[3], rev = true))
+    return AttentionDCA.AttOutStd(nothing, unique(x->x[1:2],sort(s, by = x -> x[3], rev = true)))
 end
  

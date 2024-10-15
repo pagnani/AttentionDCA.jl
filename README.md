@@ -9,7 +9,7 @@ Package used for the analysis of the factored self-attention mechanism through a
 This is an unregistered package: to install enter `]` in the Julia repl and
 
 ```
-pkg> add https://github.com/pagnani/AttentionDCA.jl.git 
+pkg> add https://github.com/pagnani/AttentionDCA.jl
 
 ```
 ## Use
@@ -33,4 +33,4 @@ All data used in this study is publicly available at [GitHub/francescocaredda/Da
 
 ## Inquiries 
 
-Any question can directed to francesco.caredda@polito.it
+Any question can be directed to francesco.caredda@polito.it

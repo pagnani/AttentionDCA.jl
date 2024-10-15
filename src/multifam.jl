@@ -1,10 +1,23 @@
 
 """
     multi_trainer(D::Vector{Tuple{Matrix{Int}, Vector{Float64}}}, n_epochs::Union{Int,Vector{Int}}, H::Int, d::Vector{Int},...)
-Function to train multiple attention models at the same time. The function takes as input a vector of tuples, each containing the MSA and the weights of a protein family. The function trains the models for the specified number of epochs and returns the trained models. The function can also save the training history in a file.\n
-*n_epochs is either a single integer shared across all families or a vector of integers defining how long to train on each family \n
-*H is the number of heads, shared across all families\n
-*d is vector of inner dimensions, each of which is family dependent \n
+Function to train multiple attention models at the same time. The function takes as input a vector of tuples, each containing the MSA and the weights of a protein family. \n 
+The function trains the models for the specified number of epochs and returns a structure out::OutAttMulti containing the (Qs, Ks, V) for the different families so that the V is shared among all families. 
+Keyword arguments:\n
+
+    n_epochs:  single integer shared across all families OR a vector of integers defining how long to train on each family 
+    H: the number of heads, shared across all families
+    d: vector of inner dimensions, each of which is family dependent 
+    savefile: path to the log file pf the training, default nothing
+
+# Examples
+```
+julia> out = multi_trainer([(Z1,W1),(Z2,W2)],100,32,[23,42]);
+julia> out.m
+julia> out.m.Qs
+julia> out.m.Ks
+julia> out.m.V
+```
 """
 function multi_trainer(D::Vector{Tuple{Matrix{Int}, Vector{Float64}}}, n_epochs::Union{Int,Vector{Int}}, H::Int, d::Vector{Int};
     init_m = Nothing,
@@ -74,7 +87,7 @@ function multi_trainer(D::Vector{Tuple{Matrix{Int}, Vector{Float64}}}, n_epochs:
     end
 
     savefile !== nothing && close(file)
-    return m
+    return AttentionDCA.AttOutMulti(m, nothing)
 
 
 end
@@ -82,6 +95,15 @@ end
 """
     multi_trainer(filenames::Vector{String}, n_epochs::Union{Int,Vector{Int}}, H::Int, d::Vector{Int},...)
 Function to train multiple attention models at the same time. The function takes as input a vector of filenames, each containing the fasta file with the MSA of a protein family. 
+# Examples
+```
+julia> out = multi_trainer(["file1.fasta","file2.fasta"],100,32,[23,42]);
+julia> out.m
+julia> out.m.Qs
+julia> out.m.Ks
+julia> out.m.V
+```
+
 """
 function multi_trainer(filenames::Vector{String}, n_epochs::Union{Int,Vector{Int}}, H::Int, d::Vector{Int};
     theta::Union{Symbol,Real}=:auto,
@@ -107,9 +129,20 @@ function multi_trainer(filenames::Vector{String}, n_epochs::Union{Int,Vector{Int
 
 end
 
+
+
+
 """
     stat_multi_trainer(filenames::Vector{String}, n_sim::Int, H, d,...)
 Multiple iterations version of ‘multi_trainer‘. See ‘stat_trainer‘ and ‘multi_trainer‘ for more details.
+# Examples
+```
+julia> out = stat_multi_trainer(["file1.fasta","file2.fasta"],100,32,[23,42]);
+julia> out.score[1]
+julia> out.score[2]
+
+```
+
 """
 function stat_multi_trainer(filenames::Vector{String}, n_sim::Int, H, d;
     n_epochs = 100,
@@ -118,23 +151,32 @@ function stat_multi_trainer(filenames::Vector{String}, n_sim::Int, H, d;
     D = AttentionDCA.quickread.(filenames)
     s = [[] for _ in eachindex(filenames)]
     for _ in 1:n_sim
-        m = multi_trainer(D, n_epochs, H, d; verbose = verbose, kwds...)
+        out = multi_trainer(D, n_epochs, H, d; verbose = verbose, kwds...)
         for i in eachindex(filenames)
-            push!(s[i],score(m.Qs[i],m.Ks[i],m.V))
+            push!(s[i],score(out.m.Qs[i],out.m.Ks[i],out.m.V))
         end
     end
     for i in eachindex(filenames)
         s[i] = vcat(s[i]...)
         s[i] = unique(x->x[1:2],sort(s[i], by = x -> x[3], rev = true))
-    end 
-
-    return Vector{Tuple{Int64, Int64, Float64}}.(s)
+    end
+    return AttentionDCA.AttOutMulti(nothing, Vector{Tuple{Int64, Int64, Float64}}.(s))
 end
 
 
 """
     multi_artrainer(D::Vector{Tuple{Matrix{Int}, Vector{Float64}}}, n_epochs::Union{Int,Vector{Int}}, H::Int, d::Vector{Int}, idxperm::Vector{Vector{Int}},...)
 Autoregressive version of ‘multi_trainer‘. See ‘multi_trainer‘ for more details.
+# Examples
+```
+julia> out = multi_artrainer([(Z1,W1),(Z2,W2)],100,32,[23,42]);
+julia> out[1] #vector of ArNet structures, one for each family
+julia> out[2] #vector of ArVar structures, one for each family
+julia> out[3] #vector of m=(Q,K,V), one for each family
+julia> out[3][i].Q #query matrix for the "i-th" family
+julia> out[3][i].K
+julia> out[3][i].V
+```
 """
 function multi_artrainer(D::Vector{Tuple{Matrix{Int}, Vector{Float64}}}, n_epochs::Union{Int,Vector{Int}}, H::Int, d::Vector{Int}, idxperm::Vector{Vector{Int}};
     init_m = Nothing,
@@ -207,10 +249,8 @@ function multi_artrainer(D::Vector{Tuple{Matrix{Int}, Vector{Float64}}}, n_epoch
     savefile !== nothing && close(file)
 
     arnets = [ArNet(idxperm[i], compute_p0_J_F(D[i], m.Qs[i], m.Ks[i], m.V)...) for i in 1:NF]
-
-
+ 
     return arnets, arvars, m 
-
 
 end
 
