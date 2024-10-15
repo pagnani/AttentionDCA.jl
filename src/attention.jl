@@ -55,6 +55,7 @@ Optional arguments are: \n
     structfile: file containing the structure of the protein family used for printing the Positive Predicted Value of the model during learning, default nothing 
     savefile: file where to save the log, default nothing
 
+The `structfile` is a file containing a list of (i, j, d_ij) where d_ij is the distance in Angstrom between the residues i and j.\n
 It returns a structure out::OutAttStd containing a NamedTuple with the trained model out.m = (Q,K,V).
 # Examples
 ```

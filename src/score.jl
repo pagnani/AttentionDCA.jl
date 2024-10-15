@@ -179,12 +179,12 @@ julia> ppv = compute_PPV(out, "filestruct.dat")
 ```
 
 """
-function compute_PPV(out::AttOut, filestruct::String, kwds...) 
+function compute_PPV(out::AttOut, filestruct::String; kwds...) 
     
     if out.m === nothing 
-        return compute_PPV(out.score, filestruct, kwds...)
+        return compute_PPV(out.score, filestruct; kwds...)
     else 
-        return compute_PPV(score(out), filestruct, kwds...)
+        return compute_PPV(score(out), filestruct; kwds...)
     end
 end
 """
@@ -198,11 +198,11 @@ julia> ppvs = compute_PPV(out, ["filestruct1.dat", "filestruct2.dat"])
 ```
 
 """
-function compute_PPV(out::AttOut, files_struct::Vector{String}, kwds...) 
+function compute_PPV(out::AttOut, files_struct::Vector{String}; kwds...) 
     if out.m === nothing 
-        return [compute_PPV(score, files_struct[i], kwds...) for i in 1:length(files_struct)]
+        return [compute_PPV(score, files_struct[i]; kwds...) for i in 1:length(files_struct)]
     else 
-        return [compute_PPV(score(out.m.Qs[i], out.m.Ks[i], out.m.V), files_struct[i], kwds...) for i in 1:length(files_struct)]
+        return [compute_PPV(score(out.m.Qs[i], out.m.Ks[i], out.m.V), files_struct[i]; kwds...) for i in 1:length(files_struct)]
     end
 end
 
@@ -212,7 +212,7 @@ function compute_actualPPV(filestruct;cutoff=8.0,min_separation=6)
     l = 0
     trivial_contacts = 0
     for i in 1:L
-        if distances[i,end]<cutoff #originally it was [i,4]
+        if distances[i,end]<=cutoff #originally it was [i,4]
             if abs(distances[i,1]-distances[i,2]) > min_separation
                 l += 1
             else 
@@ -220,9 +220,9 @@ function compute_actualPPV(filestruct;cutoff=8.0,min_separation=6)
             end
         end
     end
-    println("l = $l")
-    println("L = $L")
-    println("trivial contacts = $trivial_contacts")
+    #println("l = $l")
+    #println("L = $L")
+    #println("trivial contacts = $trivial_contacts")
     x = zeros(l)
     fill!(x,1.0)
     scra = map(x->l/x,[l+1:(L-trivial_contacts);])
@@ -319,7 +319,7 @@ Keyword arguments:
         return M, _A
     end
     
-    k_matrix(out::AttOutStd, k, version, kwds...) = k_matrix(out.m..., k, version, kwds...)
+    k_matrix(out::AttOutStd, k, version; kwds...) = k_matrix(out.m..., k, version; kwds...)
     
     k_matrix(Q,K,V, version; sym = true, APC = false, sqr = false) = k_matrix(Q,K,V, size(Q,3)^2,version; sym = sym, APC = APC, sqr = sqr)
     

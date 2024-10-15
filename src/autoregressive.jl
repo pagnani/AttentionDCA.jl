@@ -46,7 +46,6 @@ Optional arguments are: \n
     λ: regularization parameter
     init_m: initialization for the (Q,K,V) parameters, default nothing 
     init_fun: initialization function for the (Q,K,V) parameters, default rand 
-    structfile: file containing the structure of the protein family used for printing the Positive Predicted Value of the model during learning, default nothing
     savefile: file where to save the log, default nothing
 
 It returns a structure out::OutAttAr containing ArNet and ArVar (ref ArDCA.jl) and the trained model: out.ArNet, out.ArVar, out.m = (Q,K,V)
