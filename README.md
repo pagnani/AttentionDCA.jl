@@ -26,7 +26,7 @@ These take as as inputs either tuples with integer-encoded MSA and weight vector
 ?trainer
 ```
 
-A detailed example of the use of the package can be found inside `notebooks/ExampleAttentionDCA`.
+A detailed example of the use of the package can be found inside `notebooks/ExampleAttentionDCA`. To use it, it is necessary to clone the repository and follow the indications inside the notebook itself.
 
 ## Data
 
